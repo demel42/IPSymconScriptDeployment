@@ -31,10 +31,13 @@
 
 			"local path": "lokales Verzeichnis",
 
-			"Time for the cyclical check of the repository for changes": "Uhrzeit für die zyklische Prüfung des Repositorys auf Änderungen",
+			"Time for the cyclical check": "Uhrzeit für die zyklische Prüfung",
 
 			"__actions__": "",
-			"Check repository": "Repository überprüfen",
+			"Perform check": "Prüfung durchführen",
+
+			"__variables__": "",
+			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",
 
 			"__end__": ""
 		}

@@ -43,7 +43,7 @@ class ScriptDeployment extends IPSModule
 
         $this->InstallVarProfiles(false);
 
-        $this->RegisterTimer('CheckRepositoryTimer', 0, 'IPS_RequestAction(' . $this->InstanceID . ', "CheckRepository", "");');
+        $this->RegisterTimer('CheckTimer', 0, 'IPS_RequestAction(' . $this->InstanceID . ', "PerformCheck", "");');
 
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
     }
@@ -53,7 +53,7 @@ class ScriptDeployment extends IPSModule
         parent::MessageSink($timestamp, $senderID, $message, $data);
 
         if ($message == IPS_KERNELMESSAGE && $data[0] == KR_READY) {
-            $this->SetCheckRepositoryTimer();
+            $this->SetCheckTimer();
         }
     }
 
@@ -107,28 +107,30 @@ class ScriptDeployment extends IPSModule
         $this->MaintainReferences();
 
         if ($this->CheckPrerequisites() != false) {
-            $this->MaintainTimer('CheckRepositoryTimer', 0);
+            $this->MaintainTimer('CheckTimer', 0);
             $this->MaintainStatus(self::$IS_INVALIDPREREQUISITES);
             return;
         }
 
         if ($this->CheckUpdate() != false) {
-            $this->MaintainTimer('CheckRepositoryTimer', 0);
+            $this->MaintainTimer('CheckTimer', 0);
             $this->MaintainStatus(self::$IS_UPDATEUNCOMPLETED);
             return;
         }
 
         if ($this->CheckConfiguration() != false) {
-            $this->MaintainTimer('CheckRepositoryTimer', 0);
+            $this->MaintainTimer('CheckTimer', 0);
             $this->MaintainStatus(self::$IS_INVALIDCONFIG);
             return;
         }
 
         $vpos = 1;
 
+		$this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
+
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
-            $this->MaintainTimer('CheckRepositoryTimer', 0);
+            $this->MaintainTimer('CheckTimer', 0);
             $this->MaintainStatus(IS_INACTIVE);
             return;
         }
@@ -136,7 +138,7 @@ class ScriptDeployment extends IPSModule
         $this->MaintainStatus(IS_ACTIVE);
 
         if (IPS_GetKernelRunlevel() == KR_READY) {
-            $this->SetCheckRepositoryTimer();
+            $this->SetCheckTimer();
         }
     }
 
@@ -224,7 +226,7 @@ class ScriptDeployment extends IPSModule
         $formElements[] = [
             'name'    => 'update_time',
             'type'    => 'SelectTime',
-            'caption' => 'Time for the cyclical check of the repository for changes',
+            'caption' => 'Time for the cyclical check',
         ];
 
         return $formElements;
@@ -245,7 +247,7 @@ class ScriptDeployment extends IPSModule
 
         $formActions[] = [
             'type'    => 'Button',
-            'caption' => 'Check repository',
+            'caption' => 'Perform check',
             'onClick' => 'IPS_RequestAction($id, "CheckRepository", "");',
         ];
 
@@ -275,7 +277,7 @@ class ScriptDeployment extends IPSModule
         return $formActions;
     }
 
-    private function SetCheckRepositoryTimer()
+    private function SetCheckTimer()
     {
         $now = time();
         $update_time = json_decode($this->ReadPropertyString('update_time'), true);
@@ -284,25 +286,26 @@ class ScriptDeployment extends IPSModule
             $next_tstamp += 86400;
         }
         $sec = $next_tstamp - $now;
-        $this->MaintainTimer('CheckRepositoryTimer', $sec * 1000);
+        $this->MaintainTimer('CheckTimer', $sec * 1000);
     }
 
-    private function CheckRepository()
+    private function PerformCheck()
     {
         if ($this->CheckStatus() == self::$STATUS_INVALID) {
             $this->SendDebug(__FUNCTION__, $this->GetStatusText() . ' => skip', 0);
             return;
         }
 
-        $this->SetCheckRepositoryTimer();
+		$this->SetValue('Timestamp', time());
+        $this->SetCheckTimer();
     }
 
     private function LocalRequestAction($ident, $value)
     {
         $r = true;
         switch ($ident) {
-            case 'CheckRepository':
-                $this->CheckRepository();
+            case 'PerformCheck':
+                $this->PerformCheck();
                 break;
             default:
                 $r = false;
@@ -336,5 +339,29 @@ class ScriptDeployment extends IPSModule
         if ($r) {
             $this->SetValue($ident, $value);
         }
+    }
+
+    private function execute($cmd, &$output)
+    {
+        $this->SendDebug(__FUNCTION__, $cmd, 0);
+
+        $time_start = microtime(true);
+        $data = exec($cmd, $out, $exitcode);
+        $duration = round(microtime(true) - $time_start, 2);
+
+        foreach ($out as $s) {
+            $this->SendDebug(__FUNCTION__, '  ' . $s, 0);
+        }
+        $this->SendDebug(__FUNCTION__, '  ' . $data, 0);
+
+        if ($exitcode) {
+            $this->SendDebug(__FUNCTION__, ' ... failed with exitcode=' . $exitcode, 0);
+
+            $output = '';
+            return false;
+        }
+
+        $output = $out;
+        return true;
     }
 }
