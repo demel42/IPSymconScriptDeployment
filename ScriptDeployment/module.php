@@ -126,7 +126,7 @@ class ScriptDeployment extends IPSModule
 
         $vpos = 1;
 
-		$this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
+        $this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
 
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
@@ -296,7 +296,7 @@ class ScriptDeployment extends IPSModule
             return;
         }
 
-		$this->SetValue('Timestamp', time());
+        $this->SetValue('Timestamp', time());
         $this->SetCheckTimer();
     }
 
