@@ -10,11 +10,16 @@ class ScriptDeployment extends IPSModule
     use ScriptDeployment\StubsCommonLib;
     use ScriptDeploymentLocalLib;
 
+    private static $semaphoreTM = 5 * 1000;
+
+    private $SemaphoreID;
+
     public function __construct(string $InstanceID)
     {
         parent::__construct($InstanceID);
 
         $this->CommonContruct(__DIR__);
+        $this->SemaphoreID = __CLASS__ . '_' . $InstanceID;
     }
 
     public function __destruct()
@@ -31,12 +36,16 @@ class ScriptDeployment extends IPSModule
         $this->RegisterPropertyString('url', '');
         $this->RegisterPropertyString('user', '');
         $this->RegisterPropertyString('password', '');
+        $this->RegisterPropertyString('token', '');
         $this->RegisterPropertyInteger('port', '22');
+        $this->RegisterPropertyString('branch', 'main');
         $this->RegisterPropertyString('git_user_name', 'IP-Symcon');
         $this->RegisterPropertyString('git_user_email', '');
         $this->RegisterPropertyString('path', '');
 
         $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
+
+        $this->RegisterAttributeString('commit', '');
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
@@ -166,6 +175,11 @@ class ScriptDeployment extends IPSModule
                     'caption' => 'Git-Repository',
                 ],
                 [
+                    'name'    => 'branch',
+                    'type'    => 'ValidationTextBox',
+                    'caption' => ' ... Branch',
+                ],
+                [
                     'type'    => 'Label',
                     'caption' => 'for http/https and ssh'
                 ],
@@ -173,6 +187,11 @@ class ScriptDeployment extends IPSModule
                     'type'    => 'ValidationTextBox',
                     'name'    => 'user',
                     'caption' => ' ... User'
+                ],
+                [
+                    'type'    => 'PasswordTextBox',
+                    'name'    => 'token',
+                    'caption' => ' ... Personal access token'
                 ],
                 [
                     'type'    => 'Label',
@@ -248,7 +267,7 @@ class ScriptDeployment extends IPSModule
         $formActions[] = [
             'type'    => 'Button',
             'caption' => 'Perform check',
-            'onClick' => 'IPS_RequestAction($id, "CheckRepository", "");',
+            'onClick' => 'IPS_RequestAction($id, "PerformCheck", "");',
         ];
 
         $formActions[] = [
@@ -289,6 +308,118 @@ class ScriptDeployment extends IPSModule
         $this->MaintainTimer('CheckTimer', $sec * 1000);
     }
 
+    private function BuildGitUrl()
+    {
+        $url = $this->ReadPropertyString('url');
+        $user = $this->ReadPropertyString('user');
+        $token = $this->ReadPropertyString('token');
+        $password = $this->ReadPropertyString('password');
+        $port = $this->ReadPropertyInteger('port');
+
+        $auth = '';
+        if ($user != '') {
+            $auth = rawurlencode($user);
+            if ($token != '') {
+                $auth .= ':';
+                $auth .= $token;
+            } elseif ($password != '') {
+                $auth .= ':';
+                $auth .= rawurlencode($password);
+            }
+        }
+
+        if (substr($url, 0, 8) == 'https://') {
+            $s = substr($url, 8);
+            $url = 'https://';
+            if ($auth != '') {
+                $url .= $auth;
+                $url .= '@';
+            }
+            $url .= $s;
+        }
+        if (substr($url, 0, 7) == 'http://') {
+            $s = substr($url, 7);
+            $url = 'http://';
+            if ($auth != '') {
+                $url .= $auth;
+                $url .= '@';
+            }
+            $url .= $s;
+        }
+        if (substr($url, 0, 6) == 'ssh://' && $port != '') {
+            $s = substr($url, 6);
+            $pos = strpos($s, '/');
+            $srv = substr($s, 0, $pos);
+            $path = substr($s, $pos);
+            $url = 'ssh://';
+            if ($user != '') {
+                $url .= rawurlencode($user);
+                $url .= '@';
+            }
+            $url .= $srv;
+            if ($port != '') {
+                if ($port != '') {
+                    $url .= ':';
+                    $url .= $port;
+                }
+            }
+            $url .= $path;
+        }
+
+        return $url;
+    }
+
+    private function SyncRepository($path, $commit)
+    {
+        $basePath = $this->ReadPropertyString('path');
+
+        $repo_delete = false;
+        $repo_clone = true;
+
+        if (file_exists($path)) {
+            if (is_dir($path) == false) {
+                $repo_delete = true;
+            } elseif ($this->changeDir($path) == false) {
+                $repo_delete = true;
+            } elseif ($this->execute('git status 2>&1', $output) == false) {
+                $repo_delete = true;
+            } else {
+                $repo_clone = false;
+            }
+        }
+
+        if ($this->changeDir($basePath) == false) {
+            return false;
+        }
+
+        if ($repo_delete) {
+            if ($this->rmeDir($path)) {
+                return false;
+            }
+            if ($this->makeDir($path) == false) {
+                return false;
+            }
+        }
+
+        if ($repo_clone) {
+            if ($this->execute('git clone ' . $this->BuildGitUrl() . ' ' . $path . ' 2>&1', $output) == false) {
+                return false;
+            }
+            if ($this->changeDir($path) == false) {
+                return false;
+            }
+        } else {
+            if ($this->changeDir($path) == false) {
+                return false;
+            }
+            if ($this->execute('git pull 2>&1', $output) == false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function PerformCheck()
     {
         if ($this->CheckStatus() == self::$STATUS_INVALID) {
@@ -296,8 +427,79 @@ class ScriptDeployment extends IPSModule
             return;
         }
 
+        if (IPS_SemaphoreEnter($this->SemaphoreID, self::$semaphoreTM) == false) {
+            $this->SendDebug(__FUNCTION__, 'repository is locked', 0);
+            return;
+        }
+
+        $url = $this->ReadPropertyString('url');
+        $path = $this->ReadPropertyString('path');
+
+        $this->SendDebug(__FUNCTION__, 'url=' . $url . ', path=' . $path, 0);
+
+        $basePath = $path . DIRECTORY_SEPARATOR . basename($url, '.git');
+
+        $dirs = [$path, $basePath];
+        foreach ($dirs as $dir) {
+            if ($this->checkDir($dir, true) == false) {
+                return false;
+            }
+        }
+
+        $headPath = $basePath . DIRECTORY_SEPARATOR . 'head';
+        $currentPath = $basePath . DIRECTORY_SEPARATOR . 'current';
+        $commit = $this->ReadAttributeString('commit');
+
+        if ($this->SyncRepository($headPath, '') == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+
+        if ($this->execute('git symbolic-ref --short HEAD 2>&1', $output) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $curBranch = $output[0];
+
+        if ($this->execute('git branch -r 2>&1', $output) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $allBranch = [];
+        foreach ($output as $s) {
+            if (substr($s, 2, 11) == 'origin/HEAD') {
+                continue;
+            }
+            $allBranch[] = substr($s, 9);
+        }
+        $this->SendDebug(__FUNCTION__, 'curBranch=' . $curBranch . ', allBranch=' . print_r($allBranch, true), 0);
+
+        $branch = $this->ReadPropertyString('branch');
+        if ($branch != '' && $curBranch != $branch) {
+            if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
+                IPS_SemaphoreLeave($this->SemaphoreID);
+                return false;
+            }
+        }
+        /*
+        $name = $this->ReadPropertyString('git_user_name');
+        if (!$this->execute('git config user.name "' . $name . '"', $output)) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $email = $this->ReadPropertyString('git_user_email');
+        if (!$this->execute('git config user.email "' . $email . '"', $output)) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+         */
+
+        // commit-id = "git rev-parse HEAD"
+
         $this->SetValue('Timestamp', time());
         $this->SetCheckTimer();
+
+        IPS_SemaphoreLeave($this->SemaphoreID);
     }
 
     private function LocalRequestAction($ident, $value)
@@ -362,6 +564,53 @@ class ScriptDeployment extends IPSModule
         }
 
         $output = $out;
+        return true;
+    }
+
+    private function checkDir($path, $autoCreate)
+    {
+        if (file_exists($path)) {
+            if (is_dir($path) == false) {
+                $this->SendDebug(__FUNCTION__, $path . ' is not a directory', 0);
+                return false;
+            }
+        } else {
+            if ($autoCreate == false) {
+                $this->SendDebug(__FUNCTION__, 'missing directory ' . $path, 0);
+                return false;
+            }
+            if (mkdir($path) == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to create directory ' . $path, 0);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function changeDir($path)
+    {
+        if (chdir($path) == false) {
+            $this->SendDebug(__FUNCTION__, 'can\'t change to direactory ' . $path, 0);
+            return false;
+        }
+        return true;
+    }
+
+    private function makeDir($path)
+    {
+        if (mkdir($path) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to create directory ' . $path, 0);
+            return false;
+        }
+        return true;
+    }
+
+    private function rmDir($path)
+    {
+        if ($this->execute('/bin/rm -rf ' . $headPath . ' 2>&1', $output) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to remove complete directory ' . $path, 0);
+            return false;
+        }
         return true;
     }
 }

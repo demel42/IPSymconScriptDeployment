@@ -16,9 +16,11 @@
 			"__emelents__": "", 
 			"Repository remote configuration": "Konfiguration des entfernten Repositorys",
 			"Git-Repository": "Git-Repository",
+			" ... Branch": " ... Branch",
 
 			"for http/https and ssh": "für http/https und ssh",
 			" ... User": " ... Benutzer",
+			" ... Personal access token": " ... Personal access token",
 			"for http/https only": "nur für http/https",
 			" ... Password": " ... Passwort",
 			"for ssh only": "nur für ssh",
