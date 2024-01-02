@@ -1,0 +1,12 @@
+{
+	"id": "{DD4FF2E3-F527-9F6A-80CA-34E1C7065917}",
+	"name": "ScriptDeployment Device",
+	"type": 3,
+	"vendor": "",
+	"aliases": [],
+	"parentRequirements": [],
+	"childRequirements": [],
+	"implemented": [],
+	"prefix": "ScriptDeployment",
+	"url": "https://github.com/demel42/IPSymconScriptDeployment/blob/main/README.md"
+}

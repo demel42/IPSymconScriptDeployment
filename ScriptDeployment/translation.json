@@ -1,0 +1,42 @@
+{
+	"translations": {
+		"de": {
+			"Script deployment": "Skript-Bereitstellung",
+
+			"__function__": "CheckModulePrerequisites",
+			"missing \"git\"": "\"Git\" fehlt",
+
+			"__function__": "CheckConfiguration",
+			"Git-Repository must be specified": "Git-Repository muss angegeben werden",
+			"Local path must be specified": "Lokaler Pfad muss angegeben werden",
+
+			"__properties__": "",
+			"Disable instance": "Instanz deaktivieren",
+
+			"__emelents__": "", 
+			"Repository remote configuration": "Konfiguration des entfernten Repositorys",
+			"Git-Repository": "Git-Repository",
+
+			"for http/https and ssh": "für http/https und ssh",
+			" ... User": " ... Benutzer",
+			"for http/https only": "nur für http/https",
+			" ... Password": " ... Passwort",
+			"for ssh only": "nur für ssh",
+			" ... Port": " ... Port",
+
+			"Repository local configuration": "Konfiguration des lokalen Repositorys",
+			"Informations for git config ...": "Angaben für git config ...",
+			" ... user.name": " ... user.name",
+			" ... user.email": " ... user.email",
+
+			"local path": "lokales Verzeichnis",
+
+			"Time for the cyclical check of the repository for changes": "Uhrzeit für die zyklische Prüfung des Repositorys auf Änderungen",
+
+			"__actions__": "",
+			"Check repository": "Repository überprüfen",
+
+			"__end__": ""
+		}
+	}
+}

@@ -19,23 +19,24 @@
 ## 2. Voraussetzungen
 
 - IP-Symcon ab Version 6.0
+- ein git-Repository mit den zu verteilenden Scripten
 
 ## 3. Installation
 
 ### a. Installation des Moduls
 
-Im [Module Store](https://www.symcon.de/service/dokumentation/komponenten/verwaltungskonsole/module-store/) ist das Modul unter dem Suchbegriff *ModuleTemplate* zu finden.<br>
-Alternativ kann das Modul über [Module Control](https://www.symcon.de/service/dokumentation/modulreferenz/module-control/) unter Angabe der URL `https://github.com/demel42/ModuleTemplate.git` installiert werden.
+Im [Module Store](https://www.symcon.de/service/dokumentation/komponenten/verwaltungskonsole/module-store/) ist das Modul unter dem Suchbegriff *ScriptDeployment* zu finden.<br>
+Alternativ kann das Modul über [Module Control](https://www.symcon.de/service/dokumentation/modulreferenz/module-control/) unter Angabe der URL `https://github.com/demel42/IPSymconScriptDeployment.git` installiert werden.
 
 ### b. Einrichtung in IPS
 
 ## 4. Funktionsreferenz
 
-alle Funktionen sind über _RequestAction_ der jew. Variablen ansteuerbar
+
 
 ## 5. Konfiguration
 
-### ModuleTemplate Device
+### ScriptDeployment
 
 #### Properties
 
@@ -60,14 +61,14 @@ Es werden folgende Variablenprofile angelegt:
 ## 6. Anhang
 
 ### GUIDs
-- Modul: `{0DCE4B6F-9176-DC9A-5502-1AF2B7573EB5}`
+- Modul: `{9FBBBEB0-F06A-0938-6FD2-74DB4FE41387}`
 - Instanzen:
-  - ModuleTemplateDevice: `{B052AEAB-2687-02EB-DF40-74191E242A0B}`
+  - ScriptDeployment: `{DD4FF2E3-F527-9F6A-80CA-34E1C7065917}`
 - Nachrichten:
 
 ### Quellen
 
 ## 7. Versions-Historie
 
-- 0.9 @ dd.mm.yyyy HH:MM (beta)
+- 0.9 @ 02.01.2024 11:31
   - Initiale Version

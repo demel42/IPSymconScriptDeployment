@@ -5,10 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/common.php';
 require_once __DIR__ . '/../libs/local.php';
 
-class ModuleTemplateDevice extends IPSModule
+class ScriptDeployment extends IPSModule
 {
-    use ModuleTemplate\StubsCommonLib;
-    use ModuleTemplateLocalLib;
+    use ScriptDeployment\StubsCommonLib;
+    use ScriptDeploymentLocalLib;
 
     public function __construct(string $InstanceID)
     {
@@ -28,18 +28,22 @@ class ModuleTemplateDevice extends IPSModule
 
         $this->RegisterPropertyBoolean('module_disable', false);
 
-        $this->RegisterPropertyBoolean('log_no_parent', true);
+        $this->RegisterPropertyString('url', '');
+        $this->RegisterPropertyString('user', '');
+        $this->RegisterPropertyString('password', '');
+        $this->RegisterPropertyInteger('port', '22');
+        $this->RegisterPropertyString('git_user_name', 'IP-Symcon');
+        $this->RegisterPropertyString('git_user_email', '');
+        $this->RegisterPropertyString('path', '');
 
-        $this->RegisterPropertyInteger('update_interval', 60);
+        $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
 
-        $this->RegisterAttributeString('external_update_interval', '');
-
         $this->InstallVarProfiles(false);
 
-        $this->RegisterTimer('UpdateStatus', 0, 'IPS_RequestAction(' . $this->InstanceID . ', "UpdateStatus", "");');
+        $this->RegisterTimer('CheckRepositoryTimer', 0, 'IPS_RequestAction(' . $this->InstanceID . ', "CheckRepository", "");');
 
         $this->RegisterMessage(0, IPS_KERNELMESSAGE);
     }
@@ -49,7 +53,7 @@ class ModuleTemplateDevice extends IPSModule
         parent::MessageSink($timestamp, $senderID, $message, $data);
 
         if ($message == IPS_KERNELMESSAGE && $data[0] == KR_READY) {
-            $this->OverwriteUpdateInterval();
+            $this->SetCheckRepositoryTimer();
         }
     }
 
@@ -57,12 +61,29 @@ class ModuleTemplateDevice extends IPSModule
     {
         $r = [];
 
+        $output = '';
+        if ($this->execute('git --version 2>&1', $output) == false) {
+            $r[] = $this->Translate('missing "git"');
+        }
+
         return $r;
     }
 
     private function CheckModuleConfiguration()
     {
         $r = [];
+
+        $url = $this->ReadPropertyString('url');
+        if ($url == '') {
+            $this->SendDebug(__FUNCTION__, '"url" is missing', 0);
+            $r[] = $this->Translate('Git-Repository must be specified');
+        }
+
+        $path = $this->ReadPropertyString('path');
+        if ($path == '') {
+            $this->SendDebug(__FUNCTION__, '"path" is missing', 0);
+            $r[] = $this->Translate('Local path must be specified');
+        }
 
         return $r;
     }
@@ -86,19 +107,19 @@ class ModuleTemplateDevice extends IPSModule
         $this->MaintainReferences();
 
         if ($this->CheckPrerequisites() != false) {
-            $this->MaintainTimer('UpdateStatus', 0);
+            $this->MaintainTimer('CheckRepositoryTimer', 0);
             $this->MaintainStatus(self::$IS_INVALIDPREREQUISITES);
             return;
         }
 
         if ($this->CheckUpdate() != false) {
-            $this->MaintainTimer('UpdateStatus', 0);
+            $this->MaintainTimer('CheckRepositoryTimer', 0);
             $this->MaintainStatus(self::$IS_UPDATEUNCOMPLETED);
             return;
         }
 
         if ($this->CheckConfiguration() != false) {
-            $this->MaintainTimer('UpdateStatus', 0);
+            $this->MaintainTimer('CheckRepositoryTimer', 0);
             $this->MaintainStatus(self::$IS_INVALIDCONFIG);
             return;
         }
@@ -107,7 +128,7 @@ class ModuleTemplateDevice extends IPSModule
 
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
-            $this->MaintainTimer('UpdateStatus', 0);
+            $this->MaintainTimer('CheckRepositoryTimer', 0);
             $this->MaintainStatus(IS_INACTIVE);
             return;
         }
@@ -115,13 +136,13 @@ class ModuleTemplateDevice extends IPSModule
         $this->MaintainStatus(IS_ACTIVE);
 
         if (IPS_GetKernelRunlevel() == KR_READY) {
-            $this->OverwriteUpdateInterval();
+            $this->SetCheckRepositoryTimer();
         }
     }
 
     private function GetFormElements()
     {
-        $formElements = $this->GetCommonFormElements('ModulTemplate Device');
+        $formElements = $this->GetCommonFormElements('Script deployment');
 
         if ($this->GetStatus() == self::$IS_UPDATEUNCOMPLETED) {
             return $formElements;
@@ -134,17 +155,76 @@ class ModuleTemplateDevice extends IPSModule
         ];
 
         $formElements[] = [
-            'type'    => 'NumberSpinner',
-            'name'    => 'update_interval',
-            'suffix'  => 'Seconds',
-            'minimum' => 0,
-            'caption' => 'Update interval',
+            'type'    => 'ExpansionPanel',
+            'items'   => [
+                [
+                    'name'    => 'url',
+                    'type'    => 'ValidationTextBox',
+                    'width'   => '80%',
+                    'caption' => 'Git-Repository',
+                ],
+                [
+                    'type'    => 'Label',
+                    'caption' => 'for http/https and ssh'
+                ],
+                [
+                    'type'    => 'ValidationTextBox',
+                    'name'    => 'user',
+                    'caption' => ' ... User'
+                ],
+                [
+                    'type'    => 'Label',
+                    'caption' => 'for http/https only'
+                ],
+                [
+                    'type'    => 'PasswordTextBox',
+                    'name'    => 'password',
+                    'caption' => ' ... Password'
+                ],
+                [
+                    'type'    => 'Label',
+                    'caption' => 'for ssh only'
+                ],
+                [
+                    'name'    => 'port',
+                    'type'    => 'NumberSpinner',
+                    'minimum' => 0,
+                    'caption' => ' ... Port'
+                ],
+            ],
+            'caption' => 'Repository remote configuration'
         ];
 
         $formElements[] = [
-            'type'    => 'CheckBox',
-            'name'    => 'log_no_parent',
-            'caption' => 'Generate message when the gateway is inactive',
+            'type'    => 'ExpansionPanel',
+            'items'   => [
+                [
+                    'type'    => 'Label',
+                    'caption' => 'Informations for git config ...'
+                ],
+                [
+                    'type'    => 'ValidationTextBox',
+                    'name'    => 'git_user_name',
+                    'caption' => ' ... user.name'
+                ],
+                [
+                    'type'    => 'ValidationTextBox',
+                    'name'    => 'git_user_email',
+                    'caption' => ' ... user.email'
+                ],
+                [
+                    'type'    => 'ValidationTextBox',
+                    'name'    => 'path',
+                    'caption' => 'local path'
+                ],
+            ],
+            'caption' => 'Repository local configuration'
+        ];
+
+        $formElements[] = [
+            'name'    => 'update_time',
+            'type'    => 'SelectTime',
+            'caption' => 'Time for the cyclical check of the repository for changes',
         ];
 
         return $formElements;
@@ -165,8 +245,8 @@ class ModuleTemplateDevice extends IPSModule
 
         $formActions[] = [
             'type'    => 'Button',
-            'caption' => 'Update status',
-            'onClick' => 'IPS_RequestAction($id, "UpdateStatus", "");',
+            'caption' => 'Check repository',
+            'onClick' => 'IPS_RequestAction($id, "CheckRepository", "");',
         ];
 
         $formActions[] = [
@@ -195,54 +275,34 @@ class ModuleTemplateDevice extends IPSModule
         return $formActions;
     }
 
-    private function SetUpdateInterval(int $sec = null)
+    private function SetCheckRepositoryTimer()
     {
-        if (is_null($sec)) {
-            $sec = $this->ReadAttributeString('external_update_interval');
-            if ($sec == '') {
-                $sec = $this->ReadPropertyInteger('update_interval');
-            }
+        $now = time();
+        $update_time = json_decode($this->ReadPropertyString('update_time'), true);
+        $next_tstamp = $now + $update_time['hour'] * 3600 + $update_time['minute'] * 60 + $update_time['second'];
+        if ($next_tstamp <= $now) {
+            $next_tstamp += 86400;
         }
-        $this->MaintainTimer('UpdateStatus', $sec * 1000);
+        $sec = $next_tstamp - $now;
+        $this->MaintainTimer('CheckRepositoryTimer', $sec * 1000);
     }
 
-    public function OverwriteUpdateInterval(int $sec = null)
-    {
-        if (is_null($sec)) {
-            $this->WriteAttributeString('external_update_interval', '');
-        } else {
-            $this->WriteAttributeString('external_update_interval', $sec);
-        }
-        $this->SetUpdateInterval($sec);
-    }
-
-    private function UpdateStatus()
+    private function CheckRepository()
     {
         if ($this->CheckStatus() == self::$STATUS_INVALID) {
             $this->SendDebug(__FUNCTION__, $this->GetStatusText() . ' => skip', 0);
             return;
         }
 
-        /*
-        if ($this->HasActiveParent() == false) {
-            $this->SendDebug(__FUNCTION__, 'has no active parent/gateway', 0);
-            $log_no_parent = $this->ReadPropertyBoolean('log_no_parent');
-            if ($log_no_parent) {
-                $this->LogMessage($this->Translate('Instance has no active gateway'), KL_WARNING);
-            }
-            return;
-        }
-         */
-
-        $this->SendDebug(__FUNCTION__, $this->PrintTimer('UpdateStatus'), 0);
+        $this->SetCheckRepositoryTimer();
     }
 
     private function LocalRequestAction($ident, $value)
     {
         $r = true;
         switch ($ident) {
-            case 'UpdateStatus':
-                $this->UpdateStatus();
+            case 'CheckRepository':
+                $this->CheckRepository();
                 break;
             default:
                 $r = false;

@@ -1,12 +1,12 @@
 {
-	"id": "{0DCE4B6F-9176-DC9A-5502-1AF2B7573EB5}",
-	"name": "ModuleTemplate",
+	"id": "{9FBBBEB0-F06A-0938-6FD2-74DB4FE41387}",
+	"name": "ScriptDeployment",
 	"author": "Ch. Damsky",
-	"url": "https://github.com/demel42/ModuleTenmplate.git",
+	"url": "https://github.com/demel42/IPSymconScriptDeployment.git",
 	"compatibility": {
 		"version": "6.0"
 	},
 	"version": "0.9",
 	"build": 0,
-	"date": 0
+	"date": 1704191489
 }
