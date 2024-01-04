@@ -46,6 +46,7 @@ class ScriptDeployment extends IPSModule
         $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
 
         $this->RegisterAttributeString('commit', '');
+        $this->RegisterAttributeString('branches', json_encode([]));
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
@@ -300,7 +301,9 @@ class ScriptDeployment extends IPSModule
     {
         $now = time();
         $update_time = json_decode($this->ReadPropertyString('update_time'), true);
-        $next_tstamp = $now + $update_time['hour'] * 3600 + $update_time['minute'] * 60 + $update_time['second'];
+
+        $fmt = sprintf('d.m.Y %02d:%02d:%02d', (int) $update_time['hour'], (int) $update_time['minute'], (int) $update_time['second']);
+        $next_tstamp = strtotime(date($fmt, $now));
         if ($next_tstamp <= $now) {
             $next_tstamp += 86400;
         }
@@ -369,9 +372,11 @@ class ScriptDeployment extends IPSModule
         return $url;
     }
 
-    private function SyncRepository($path, $commit)
+    private function SyncRepository($basePath, $subdir, $branch, $commit)
     {
-        $basePath = $this->ReadPropertyString('path');
+        $this->SendDebug(__FUNCTION__, 'subdir=' . $subdir . ', branch=' . $branch . ', commit=' . $commit, 0);
+
+        $path = $basePath . DIRECTORY_SEPARATOR . $subdir;
 
         $repo_delete = false;
         $repo_clone = true;
@@ -381,21 +386,27 @@ class ScriptDeployment extends IPSModule
                 $repo_delete = true;
             } elseif ($this->changeDir($path) == false) {
                 $repo_delete = true;
-            } elseif ($this->execute('git status 2>&1', $output) == false) {
+            } elseif ($this->execute('git status --short 2>&1', $output) == false || count($output) > 0) {
                 $repo_delete = true;
             } else {
                 $repo_clone = false;
             }
         }
 
+        $this->SendDebug(__FUNCTION__, 'repo_delete=' . $this->bool2str($repo_delete) . ', repo_clone=' . $this->bool2str($repo_clone), 0);
+
         if ($this->changeDir($basePath) == false) {
             return false;
         }
 
         if ($repo_delete) {
-            if ($this->rmeDir($path)) {
+            $this->SendDebug(__FUNCTION__, 'remove directory ' . $path, 0);
+            if ($this->rmDir($path) == false) {
                 return false;
             }
+        }
+
+        if (file_exists($path) == false) {
             if ($this->makeDir($path) == false) {
                 return false;
             }
@@ -405,12 +416,32 @@ class ScriptDeployment extends IPSModule
             if ($this->execute('git clone ' . $this->BuildGitUrl() . ' ' . $path . ' 2>&1', $output) == false) {
                 return false;
             }
-            if ($this->changeDir($path) == false) {
+        }
+
+        if ($this->changeDir($path) == false) {
+            return false;
+        }
+
+        if ($commit != '') {
+            if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
                 return false;
             }
+            $curCommit = $output[0];
+            if ($curCommit != $commit) {
+                $this->execute('git config advice.detachedHead false', $output);
+                if ($this->execute('git checkout ' . $commit . ' 2>&1', $output) == false) {
+                    return false;
+                }
+            }
         } else {
-            if ($this->changeDir($path) == false) {
+            if ($this->execute('git symbolic-ref --short HEAD 2>&1', $output) == false) {
                 return false;
+            }
+            $curBranch = $output[0];
+            if ($curBranch != $branch) {
+                if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
+                    return false;
+                }
             }
             if ($this->execute('git pull 2>&1', $output) == false) {
                 return false;
@@ -448,19 +479,22 @@ class ScriptDeployment extends IPSModule
 
         $headPath = $basePath . DIRECTORY_SEPARATOR . 'head';
         $currentPath = $basePath . DIRECTORY_SEPARATOR . 'current';
+        $branch = $this->ReadPropertyString('branch');
+        if ($branch == '') {
+            $branch = 'main';
+        }
         $commit = $this->ReadAttributeString('commit');
 
-        if ($this->SyncRepository($headPath, '') == false) {
+        if ($this->SyncRepository($basePath, 'head', $branch, '') == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($this->changeDir($headPath) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
 
-        if ($this->execute('git symbolic-ref --short HEAD 2>&1', $output) == false) {
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $curBranch = $output[0];
-
+        // das muss noch woanders in (ApplyChanges?)
         if ($this->execute('git branch -r 2>&1', $output) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
@@ -472,29 +506,37 @@ class ScriptDeployment extends IPSModule
             }
             $allBranch[] = substr($s, 9);
         }
-        $this->SendDebug(__FUNCTION__, 'curBranch=' . $curBranch . ', allBranch=' . print_r($allBranch, true), 0);
+        $this->WriteAttributeString('branches', json_encode($allBranch));
+        $this->SendDebug(__FUNCTION__, 'allBranch=' . implode(', ', $allBranch), 0);
+        if (in_array($branch, $allBranch) == false) {
+            $this->SendDebug(__FUNCTION__, 'unknown branch "' . $branch . '" -> ignore', 0);
+            $branch == '';
+        }
+        // xxxx
 
-        $branch = $this->ReadPropertyString('branch');
-        if ($branch != '' && $curBranch != $branch) {
-            if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
+        $headDict = $this->readDictonary($headPath);
+        $this->SendDebug(__FUNCTION__, 'head-dictionary=' . print_r($headDict, true), 0);
+
+        if ($this->SyncRepository($basePath, 'current', $branch, $commit) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($this->changeDir($currentPath) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($commit == '') {
+            if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
                 IPS_SemaphoreLeave($this->SemaphoreID);
                 return false;
             }
+            $curCommit = $output[0];
+            $this->SendDebug(__FUNCTION__, 'curCommit=' . $curCommit, 0);
+            $this->WriteAttributeString('commit', $curCommit);
         }
-        /*
-        $name = $this->ReadPropertyString('git_user_name');
-        if (!$this->execute('git config user.name "' . $name . '"', $output)) {
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $email = $this->ReadPropertyString('git_user_email');
-        if (!$this->execute('git config user.email "' . $email . '"', $output)) {
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-         */
 
-        // commit-id = "git rev-parse HEAD"
+        $currentDict = $this->readDictonary($currentPath);
+        $this->SendDebug(__FUNCTION__, 'current-dictionary=' . print_r($currentDict, true), 0);
 
         $this->SetValue('Timestamp', time());
         $this->SetCheckTimer();
@@ -551,10 +593,13 @@ class ScriptDeployment extends IPSModule
         $data = exec($cmd, $out, $exitcode);
         $duration = round(microtime(true) - $time_start, 2);
 
+        $s = '';
         foreach ($out as $s) {
             $this->SendDebug(__FUNCTION__, '  ' . $s, 0);
         }
-        $this->SendDebug(__FUNCTION__, '  ' . $data, 0);
+        if ($s != $data) {
+            $this->SendDebug(__FUNCTION__, '  ' . $data, 0);
+        }
 
         if ($exitcode) {
             $this->SendDebug(__FUNCTION__, ' ... failed with exitcode=' . $exitcode, 0);
@@ -607,10 +652,59 @@ class ScriptDeployment extends IPSModule
 
     private function rmDir($path)
     {
-        if ($this->execute('/bin/rm -rf ' . $headPath . ' 2>&1', $output) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to remove complete directory ' . $path, 0);
+        if (is_dir($path)) {
+            $files = scandir($path);
+            foreach ($files as $file) {
+                if ($file === '.' || $file === '..') {
+                    continue;
+                }
+                $_path = $path . '/' . $file;
+                if (is_dir($_path)) {
+                    if ($this->rmDir($_path) == false) {
+                        return false;
+                    }
+                } else {
+                    if (unlink($_path) == false) {
+                        $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $_path, 0);
+                        return false;
+                    }
+                }
+            }
+            if (rmdir($path) == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to delete directory ' . $path, 0);
+                return false;
+            }
+        } elseif (unlink($path) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $path, 0);
             return false;
         }
         return true;
     }
+
+    private function readDictonary($path)
+    {
+        $fname = $path . DIRECTORY_SEPARATOR . 'dictionary.json';
+        if (file_exists($fname) == false) {
+            $this->SendDebug(__FUNCTION__, 'missing ' . $fname, 0);
+            return false;
+        } else {
+            $fp = fopen($fname, 'r');
+            if ($fp == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to open file ' . $fname, 0);
+                return false;
+            }
+            $data = fread($fp, filesize($fname));
+            if (fclose($fp) == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to close file ' . $fname, 0);
+                return false;
+            }
+            @$dict = json_decode($data, true);
+        }
+        return $dict;
+    }
 }
+
+// git pull --dry-run
+// 03.01.2024, 09:22:26 |              execute |   HEAD detached at 765c973
+// git switch -
+// git diff --shortstat $commit / git diff --shortstat $branch
