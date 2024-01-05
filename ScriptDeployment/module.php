@@ -47,6 +47,7 @@ class ScriptDeployment extends IPSModule
 
         $this->RegisterAttributeString('commit', '');
         $this->RegisterAttributeString('branches', json_encode([]));
+        $this->RegisterAttributeString('files', json_encode([]));
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
@@ -477,24 +478,24 @@ class ScriptDeployment extends IPSModule
             }
         }
 
-        $headPath = $basePath . DIRECTORY_SEPARATOR . 'head';
-        $currentPath = $basePath . DIRECTORY_SEPARATOR . 'current';
+        $topPath = $basePath . DIRECTORY_SEPARATOR . 'top';
+        $curPath = $basePath . DIRECTORY_SEPARATOR . 'cur';
         $branch = $this->ReadPropertyString('branch');
         if ($branch == '') {
             $branch = 'main';
         }
         $commit = $this->ReadAttributeString('commit');
 
-        if ($this->SyncRepository($basePath, 'head', $branch, '') == false) {
+        if ($this->SyncRepository($basePath, 'top', $branch, '') == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
-        if ($this->changeDir($headPath) == false) {
+        if ($this->changeDir($topPath) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
 
-        // das muss noch woanders in (ApplyChanges?)
+        // xxxx das muss noch woanders in (ApplyChanges?)
         if ($this->execute('git branch -r 2>&1', $output) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
@@ -514,14 +515,31 @@ class ScriptDeployment extends IPSModule
         }
         // xxxx
 
-        $headDict = $this->readDictonary($headPath);
-        $this->SendDebug(__FUNCTION__, 'head-dictionary=' . print_r($headDict, true), 0);
-
-        if ($this->SyncRepository($basePath, 'current', $branch, $commit) == false) {
+        if ($this->execute('git diff --stat ' . $commit . ' 2>&1', $output) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
-        if ($this->changeDir($currentPath) == false) {
+        $changedFiles = [];
+        foreach ($output as $s) {
+            if (preg_match('/[ ]*files\/([^ ]*)[ ]*\| .*/', $s, $r)) {
+                $changedFiles[] = $r[1];
+            }
+        }
+        $this->SendDebug(__FUNCTION__, 'changedFiles=' . print_r($changedFiles, true), 0);
+
+        $topDict = $this->readDictonary($topPath);
+        if ($topDict === false) {
+            $this->SendDebug(__FUNCTION__, 'no valid top-dictionary', 0);
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
+
+        if ($this->SyncRepository($basePath, 'cur', $branch, $commit) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($this->changeDir($curPath) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -535,8 +553,173 @@ class ScriptDeployment extends IPSModule
             $this->WriteAttributeString('commit', $curCommit);
         }
 
-        $currentDict = $this->readDictonary($currentPath);
-        $this->SendDebug(__FUNCTION__, 'current-dictionary=' . print_r($currentDict, true), 0);
+        $curDict = $this->readDictonary($curPath);
+        if ($curDict === false) {
+            $this->SendDebug(__FUNCTION__, 'no valid cur-dictionary', 0);
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $this->SendDebug(__FUNCTION__, 'cur-dictionary=' . print_r($curDict, true), 0);
+
+        $curFiles = $curDict['files'];
+        $topFiles = $topDict['files'];
+
+        $s = $this->ReadAttributeString('files');
+        $oldFiles = json_decode($s, true);
+
+        $dflt = [
+            'ident'    => '',
+            'name'     => '',
+            'location' => '',
+            'id'       => 0,
+            'removed'  => false,
+            'added'    => false,
+            'moved'    => false,
+            'orphan'   => false,
+            'missing'  => false,
+            'modified' => false,
+            'outdated' => false,
+        ];
+
+        $newFiles = [];
+        foreach ($curFiles as $curFile) {
+            $fnd = false;
+            foreach ($oldFiles as $oldFile) {
+                if ($curFile['ident'] == $oldFile['ident']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            $newFile = $dflt;
+            $newFile['ident'] = $curFile['ident'];
+            $newFile['name'] = $curFile['name'];
+            $newFile['location'] = $curFile['location'];
+            if ($fnd) {
+                $newFile['id'] = $oldFile['id'];
+                if (in_array($curFile['ident'], $changedFiles)) {
+                    $newFile['outdated'] = true;
+                }
+            } else {
+                $newFile['missing'] = true;
+            }
+            $newFiles[] = $newFile;
+        }
+        foreach ($oldFiles as $oldFile) {
+            $objID = $oldFile['id'];
+            if ($objID == 0) {
+                continue;
+            }
+
+            $fnd = false;
+            foreach ($curFiles as $curFile) {
+                if ($curFile['ident'] == $oldFile['ident']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            if ($fnd == false) {
+                $newFile = $dflt;
+                $newFile['ident'] = $oldFile['ident'];
+                $newFile['name'] = $oldFile['name'];
+                $newFile['location'] = $oldFile['location'];
+                $newFile['id'] = $oldFile['id'];
+                $newFile['removed'] = true;
+                $newFiles[] = $newFile;
+            }
+        }
+        foreach ($topFiles as $topFile) {
+            $fnd = false;
+            foreach ($newFiles as $newFile) {
+                if ($topFile['ident'] == $newFile['ident']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            if ($fnd == false) {
+                $newFile = $dflt;
+                $newFile['ident'] = $topFile['ident'];
+                $newFile['name'] = $topFile['name'];
+                $newFile['location'] = $topFile['location'];
+                $newFile['added'] = true;
+                $newFiles[] = $newFile;
+            }
+        }
+
+        $location2parents = [];
+        foreach ($newFiles as $newFile) {
+            $location = $newFile['location'];
+            $path = explode('\\', $location);
+            $objID = 0;
+            $parents = [$objID];
+            foreach ($path as $part) {
+                $objID = IPS_GetObjectIDByName($part, $objID);
+                if ($objID == false) {
+                    $parents = [];
+                    break;
+                }
+                $parents[] = $objID;
+            }
+            $location2parents[$location] = array_reverse($parents);
+        }
+        $this->SendDebug(__FUNCTION__, 'location2parents=' . print_r($location2parents, true), 0);
+
+        foreach ($newFiles as $index => $newFile) {
+            if ($newFile['missing'] == false) {
+                continue;
+            }
+
+            $location = $newFile['location'];
+            $parents = $location2parents[$location];
+            if (count($parents) == 0) {
+                continue;
+            }
+
+            $parID = $parents[0];
+            $ident = $newFile['ident'];
+            $objID = @IPS_GetObjectIDByIdent($ident, $parID);
+            if ($objID == false) {
+                $name = $newFile['name'];
+                $objID = @IPS_GetObjectIDByName($name, $parID);
+            }
+            if ($objID) {
+                $newFile['id'] = $objID;
+                $newFile['missing'] = false;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+        }
+
+        foreach ($newFiles as $index => $newFile) {
+            $objID = $newFile['id'];
+            if ($objID == 0) {
+                continue;
+            }
+
+            if (IPS_ObjectExists($objID) == false) {
+                $newFile['id'] = 0;
+                $newFile['missing'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+
+            $parID = IPS_GetParent($objID);
+
+            $location = $newFile['location'];
+            $parents = $location2parents[$location];
+            if (count($parents) == 0) {
+                $newFile['orphan'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+            if ($parents[0] != $parID) {
+                $newFile['moved'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+        }
+
+        $this->SendDebug(__FUNCTION__, 'newFiles=' . print_r($newFiles, true), 0);
+        $this->WriteAttributeString('files', json_encode($newFiles));
 
         $this->SetValue('Timestamp', time());
         $this->SetCheckTimer();
@@ -681,26 +864,95 @@ class ScriptDeployment extends IPSModule
         return true;
     }
 
+    private function readFile($fname, &$err)
+    {
+        if (file_exists($fname) == false) {
+            $this->SendDebug(__FUNCTION__, 'missing file ' . $fname, 0);
+            $err = 'missing file ' . $fname;
+            return false;
+        }
+        $fp = fopen($fname, 'r');
+        if ($fp == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to open file ' . $fname, 0);
+            $err = 'unable to open file ' . $fname;
+            return false;
+        }
+        $n = filesize($fname);
+        $data = $n > 0 ? fread($fp, $n) : '';
+        if ($data === false) {
+            $this->SendDebug(__FUNCTION__, 'unable to read ' . $n . ' bytes from  file ' . $fname, 0);
+            $err = 'unable to read ' . $n . ' bytes from file ' . $fname;
+            return false;
+        }
+        if (fclose($fp) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to close file ' . $fname, 0);
+            $err = 'unable to close file ' . $fname;
+            return false;
+        }
+        return $data;
+    }
+
     private function readDictonary($path)
     {
         $fname = $path . DIRECTORY_SEPARATOR . 'dictionary.json';
-        if (file_exists($fname) == false) {
-            $this->SendDebug(__FUNCTION__, 'missing ' . $fname, 0);
+        $data = $this->readFile($fname, $err);
+        if ($data == false) {
             return false;
-        } else {
-            $fp = fopen($fname, 'r');
-            if ($fp == false) {
-                $this->SendDebug(__FUNCTION__, 'unable to open file ' . $fname, 0);
-                return false;
-            }
-            $data = fread($fp, filesize($fname));
-            if (fclose($fp) == false) {
-                $this->SendDebug(__FUNCTION__, 'unable to close file ' . $fname, 0);
-                return false;
-            }
-            @$dict = json_decode($data, true);
+        }
+        @$dict = json_decode($data, true);
+        if ($dict == false) {
+            $this->SendDebug(__FUNCTION__, 'invalid json (' . json_last_error_msg() . ') in file ' . $fname . ', data=' . $data, 0);
+            return false;
         }
         return $dict;
+    }
+
+    public function ReadAutoload(string &$err)
+    {
+        $fname = IPS_GetKernelDir() . 'scripts' . DIRECTORY_SEPARATOR . '__autoload.php';
+        $data = $this->readFile($fname, $err);
+        if ($err != '') {
+            echo $err . PHP_EOL;
+        }
+        return $data;
+    }
+
+    private function writeFile($fname, $data, $overwrite, &$err)
+    {
+        $err = '';
+        if ($overwrite == false && file_exists($fname)) {
+            $this->SendDebug(__FUNCTION__, 'file ' . $fname . ' already exists', 0);
+            $err = 'file ' . $fname . ' already exists';
+            return false;
+        }
+        $fp = fopen($fname, 'w');
+        if ($fp == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to create file ' . $fname, 0);
+            $err = 'unable to create file ' . $fname;
+            return false;
+        }
+        $n = strlen($data);
+        if (fwrite($fp, $data, $n) === false) {
+            $this->SendDebug(__FUNCTION__, 'unable to write ' . $n . ' bytes to file ' . $fname, 0);
+            $err = 'unable to write ' . $n . ' bytes to file ' . $fname;
+            return false;
+        }
+        if (fclose($fp) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to close file ' . $fname, 0);
+            $err = 'unable to close file ' . $fname;
+            return false;
+        }
+        return true;
+    }
+
+    public function WriteAutoload(string $data, bool $overwrite, string &$err)
+    {
+        $fname = IPS_GetKernelDir() . 'scripts' . DIRECTORY_SEPARATOR . '__autoload.php';
+        $ret = $$his->writeFile($data, $overwrite, $err);
+        if ($err != '') {
+            echo $err . PHP_EOL;
+        }
+        return $ret;
     }
 }
 
@@ -708,3 +960,4 @@ class ScriptDeployment extends IPSModule
 // 03.01.2024, 09:22:26 |              execute |   HEAD detached at 765c973
 // git switch -
 // git diff --shortstat $commit / git diff --shortstat $branch
+// git diff --shortstat 765c973118ef70bafad2cb305ed6b6b16209eefc files/shelly_pro3em.php
