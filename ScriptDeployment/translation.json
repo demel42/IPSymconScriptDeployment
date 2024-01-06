@@ -41,6 +41,10 @@
 			"__variables__": "",
 			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",
 
+			"__media__": "",
+			"DifferenceToCurrent": "Lokale Änderungen",
+			"DifferenceToTop": "Änderungen zur Repository",
+
 			"__end__": ""
 		}
 	}

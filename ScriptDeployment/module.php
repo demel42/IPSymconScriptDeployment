@@ -12,6 +12,12 @@ class ScriptDeployment extends IPSModule
 
     private static $semaphoreTM = 5 * 1000;
 
+    private static $TOP_DIR = 'top';
+    private static $CUR_DIR = 'cur';
+    private static $CHG_DIR = 'chg';
+    private static $DICTIONARY_FILE = 'dictionary.json';
+    private static $FILE_DIR = 'files';
+
     private $SemaphoreID;
 
     public function __construct(string $InstanceID)
@@ -478,15 +484,15 @@ class ScriptDeployment extends IPSModule
             }
         }
 
-        $topPath = $basePath . DIRECTORY_SEPARATOR . 'top';
-        $curPath = $basePath . DIRECTORY_SEPARATOR . 'cur';
+        $topPath = $basePath . DIRECTORY_SEPARATOR . self::$TOP_DIR;
+        $curPath = $basePath . DIRECTORY_SEPARATOR . self::$CUR_DIR;
         $branch = $this->ReadPropertyString('branch');
         if ($branch == '') {
             $branch = 'main';
         }
         $commit = $this->ReadAttributeString('commit');
 
-        if ($this->SyncRepository($basePath, 'top', $branch, '') == false) {
+        if ($this->SyncRepository($basePath, self::$TOP_DIR, $branch, '') == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -535,7 +541,7 @@ class ScriptDeployment extends IPSModule
         }
         $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
 
-        if ($this->SyncRepository($basePath, 'cur', $branch, $commit) == false) {
+        if ($this->SyncRepository($basePath, self::$CUR_DIR, $branch, $commit) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -663,8 +669,10 @@ class ScriptDeployment extends IPSModule
         }
         $this->SendDebug(__FUNCTION__, 'location2parents=' . print_r($location2parents, true), 0);
 
+        // fehlende Dateien identifizieren
         foreach ($newFiles as $index => $newFile) {
-            if ($newFile['missing'] == false) {
+            $objID = $newFile['id'];
+            if ($objID == 0) {
                 continue;
             }
 
@@ -716,6 +724,69 @@ class ScriptDeployment extends IPSModule
                 $newFiles[$index] = $newFile;
                 continue;
             }
+        }
+
+        $chgPath = $basePath . DIRECTORY_SEPARATOR . self::$CHG_DIR;
+        if ($this->SyncRepository($basePath, self::$CHG_DIR, $branch, $commit) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+
+        foreach ($newFiles as $index => $newFile) {
+            $objID = $newFile['id'];
+            if ($objID == 0) {
+                continue;
+            }
+
+            $ident = $newFile['ident'];
+            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident;
+            $err = '';
+            $curContent = $this->readFile($fname, $err);
+            $ipsContent = IPS_GetScriptContent($objID);
+            $r = strcmp($curContent, $ipsContent);
+            if ($r != 0) {
+                $newFile['modified'] = true;
+                $newFiles[$index] = $newFile;
+                $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident;
+                $ret = $this->writeFile($fname, $ipsContent, true, $err);
+            }
+        }
+
+        if ($this->changeDir($chgPath) == false) {
+            return false;
+        }
+
+        $patchFile = $basePath . DIRECTORY_SEPARATOR . 'cur.patch';
+        if ($this->execute('git diff > ' . $patchFile . ' 2>&1', $output) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $patchContent = $this->readFile($patchFile, $err);
+        $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        if (unlink($patchFile) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($this->execute('git diff -R ' . $branch . ' > ' . $patchFile . ' 2>&1', $output) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $patchContent = $this->readFile($patchFile, $err);
+        $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        if (unlink($patchFile) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+
+        if ($this->changeDir($basePath) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        if ($this->rmDir($chgPath) == false) {
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
         }
 
         $this->SendDebug(__FUNCTION__, 'newFiles=' . print_r($newFiles, true), 0);
@@ -894,7 +965,8 @@ class ScriptDeployment extends IPSModule
 
     private function readDictonary($path)
     {
-        $fname = $path . DIRECTORY_SEPARATOR . 'dictionary.json';
+        $err = '';
+        $fname = $path . DIRECTORY_SEPARATOR . self::$DICTIONARY_FILE;
         $data = $this->readFile($fname, $err);
         if ($data == false) {
             return false;
@@ -948,7 +1020,7 @@ class ScriptDeployment extends IPSModule
     public function WriteAutoload(string $data, bool $overwrite, string &$err)
     {
         $fname = IPS_GetKernelDir() . 'scripts' . DIRECTORY_SEPARATOR . '__autoload.php';
-        $ret = $$his->writeFile($data, $overwrite, $err);
+        $ret = $$his->writeFile($fname, $data, $overwrite, $err);
         if ($err != '') {
             echo $err . PHP_EOL;
         }
