@@ -3,9 +3,6 @@
 		"de": {
 			"Script deployment": "Skript-Bereitstellung",
 
-			"__function__": "CheckModulePrerequisites",
-			"missing \"git\"": "\"Git\" fehlt",
-
 			"__function__": "CheckConfiguration",
 			"Git-Repository must be specified": "Git-Repository muss angegeben werden",
 			"Local path must be specified": "Lokaler Pfad muss angegeben werden",
@@ -37,6 +34,24 @@
 
 			"__actions__": "",
 			"Perform check": "Prüfung durchführen",
+
+			"__actions__": "FileList",
+			"Version": "Version",
+			"Timestamp": "Zeitpunkt",
+			"Ident": "Ident",
+			"Name": "Name",
+			"Location": "Standort",
+			"State": "Status",
+			"Deployed scripts": "Bereitgestelllte Skripte",
+			"Open script": "Skript öffnen",
+
+			"removed": "entfernt",
+			"added": "hinzugefügt",
+			"moved": "verschoben",
+			"orphan": "verwaist",
+			"missing": "fehlt",
+			"modified": "geändert",
+			"outdated": "veraltet",
 
 			"__variables__": "",
 			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",

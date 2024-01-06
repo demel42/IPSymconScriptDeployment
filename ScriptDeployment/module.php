@@ -74,18 +74,6 @@ class ScriptDeployment extends IPSModule
         }
     }
 
-    private function CheckModulePrerequisites()
-    {
-        $r = [];
-
-        $output = '';
-        if ($this->execute('git --version 2>&1', $output) == false) {
-            $r[] = $this->Translate('missing "git"');
-        }
-
-        return $r;
-    }
-
     private function CheckModuleConfiguration()
     {
         $r = [];
@@ -278,12 +266,105 @@ class ScriptDeployment extends IPSModule
             'onClick' => 'IPS_RequestAction($id, "PerformCheck", "");',
         ];
 
+        $stateFields = [
+            'removed',
+            'added',
+            'moved',
+            'orphan',
+            'missing',
+            'modified',
+            'outdated',
+        ];
+
+        $values = [];
+        $curPath = $this->getSubPath(self::$CUR_DIR);
+        $curDict = $this->readDictonary($curPath);
+
+        $s = $this->ReadAttributeString('files');
+        $curFiles = json_decode($s, true);
+        foreach ($curFiles as $curFile) {
+            $state = [];
+            foreach ($stateFields as $stateField) {
+                if ($curFile[$stateField]) {
+                    $state[] = $this->Translate($stateField);
+                }
+            }
+            $values[] = [
+                'ident'    => $curFile['ident'],
+                'name'     => $curFile['name'],
+                'location' => $curFile['location'],
+                'id'       => $curFile['id'],
+                'state'    => implode(', ', $state),
+            ];
+        }
+
+        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField", json_encode(["field" => "openObject_FileList", "param" => "objectID", "value" => $FileList["id"]]));';
         $formActions[] = [
             'type'      => 'ExpansionPanel',
             'caption'   => 'Expert area',
             'expanded'  => false,
             'items'     => [
                 $this->GetInstallVarProfilesFormItem(),
+                [
+                    'type'    => 'RowLayout',
+                    'items'   => [
+                        [
+                            'type'     => 'ValidationTextBox',
+                            'value'    => $curDict['version'],
+                            'enabled'  => false,
+                            'caption'  => 'Version',
+
+                        ],
+                        [
+                            'type'     => 'ValidationTextBox',
+                            'value'    => date('d.m.Y H:i:s', (int) $curDict['tstamp']),
+                            'enabled'  => false,
+                            'caption'  => 'Timestamp',
+                        ],
+                    ],
+                ],
+                [
+                    'type'     => 'List',
+                    'name'     => 'FileList',
+                    'columns'  => [
+                        [
+                            'name'     => 'ident',
+                            'width'    => '200px',
+                            'caption'  => 'Ident',
+                            'onClick'  => $onClick_FileList,
+                        ],
+                        [
+                            'name'     => 'name',
+                            'width'    => '250px',
+                            'caption'  => 'Name',
+                            'onClick'  => $onClick_FileList,
+                        ],
+                        [
+                            'name'     => 'location',
+                            'width'    => 'auto',
+                            'caption'  => 'Location',
+                            'onClick'  => $onClick_FileList,
+                        ],
+                        [
+                            'name'     => 'state',
+                            'width'    => '400px',
+                            'caption'  => 'State',
+                            'onClick'  => $onClick_FileList,
+                        ],
+                    ],
+                    'add'      => false,
+                    'delete'   => false,
+                    'values'   => $values,
+                    'rowCount' => count($values) > 0 ? count($values) : 1,
+                    'caption'  => 'Deployed scripts',
+                ],
+                [
+                    'type'     => 'OpenObjectButton',
+                    'objectID' => 0,
+                    'visible'  => false,
+                    'name'     => 'openObject_FileList',
+                    'caption'  => 'Open script',
+                ],
             ],
         ];
 
@@ -379,11 +460,12 @@ class ScriptDeployment extends IPSModule
         return $url;
     }
 
-    private function SyncRepository($basePath, $subdir, $branch, $commit)
+    private function SyncRepository($subdir, $branch, $commit)
     {
         $this->SendDebug(__FUNCTION__, 'subdir=' . $subdir . ', branch=' . $branch . ', commit=' . $commit, 0);
 
-        $path = $basePath . DIRECTORY_SEPARATOR . $subdir;
+        $basePath = $this->getBasePath();
+        $path = $this->getSubPath($subdir);
 
         $repo_delete = false;
         $repo_clone = true;
@@ -473,9 +555,7 @@ class ScriptDeployment extends IPSModule
         $url = $this->ReadPropertyString('url');
         $path = $this->ReadPropertyString('path');
 
-        $this->SendDebug(__FUNCTION__, 'url=' . $url . ', path=' . $path, 0);
-
-        $basePath = $path . DIRECTORY_SEPARATOR . basename($url, '.git');
+        $basePath = $this->getBasePath();
 
         $dirs = [$path, $basePath];
         foreach ($dirs as $dir) {
@@ -484,15 +564,16 @@ class ScriptDeployment extends IPSModule
             }
         }
 
-        $topPath = $basePath . DIRECTORY_SEPARATOR . self::$TOP_DIR;
-        $curPath = $basePath . DIRECTORY_SEPARATOR . self::$CUR_DIR;
+        $topPath = $this->getSubPath(self::$TOP_DIR);
+        $curPath = $this->getSubPath(self::$CUR_DIR);
+
         $branch = $this->ReadPropertyString('branch');
         if ($branch == '') {
             $branch = 'main';
         }
         $commit = $this->ReadAttributeString('commit');
 
-        if ($this->SyncRepository($basePath, self::$TOP_DIR, $branch, '') == false) {
+        if ($this->SyncRepository(self::$TOP_DIR, $branch, '') == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -541,7 +622,7 @@ class ScriptDeployment extends IPSModule
         }
         $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
 
-        if ($this->SyncRepository($basePath, self::$CUR_DIR, $branch, $commit) == false) {
+        if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -726,8 +807,8 @@ class ScriptDeployment extends IPSModule
             }
         }
 
-        $chgPath = $basePath . DIRECTORY_SEPARATOR . self::$CHG_DIR;
-        if ($this->SyncRepository($basePath, self::$CHG_DIR, $branch, $commit) == false) {
+        $chgPath = $this->getSubPath(self::$CHG_DIR);
+        if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
@@ -1025,6 +1106,18 @@ class ScriptDeployment extends IPSModule
             echo $err . PHP_EOL;
         }
         return $ret;
+    }
+
+    private function getBasePath()
+    {
+        $url = $this->ReadPropertyString('url');
+        $path = $this->ReadPropertyString('path');
+        return $path . DIRECTORY_SEPARATOR . basename($url, '.git');
+    }
+
+    private function getSubPath($subPath)
+    {
+        return $this->getBasePath() . DIRECTORY_SEPARATOR . $subPath;
     }
 }
 
