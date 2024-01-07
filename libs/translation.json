@@ -1,6 +1,14 @@
 {
 	"translations": {
 		"de": {
+			"__variableprofile__": "ScriptDeployment.State",
+			"unknown": "unbekannt",
+			"synced": "synchronisiert",
+			"local modified": "lokal geändert",
+			"updateable": "aktualisierbar",
+			"unclear": "unklar",
+			"faulty": "fehlerhaft",
+
 			"__end__": ""
 		}
 	}

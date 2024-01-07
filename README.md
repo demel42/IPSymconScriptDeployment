@@ -55,6 +55,8 @@ Alternativ kann das Modul über [Module Control](https://www.symcon.de/service/d
 Es werden folgende Variablenprofile angelegt:
 * Boolean<br>
 * Integer<br>
+ScriptDeployment.State,
+
 * Float<br>
 * String<br>
 
@@ -70,5 +72,5 @@ Es werden folgende Variablenprofile angelegt:
 
 ## 7. Versions-Historie
 
-- 0.9 @ 02.01.2024 11:31
+- 0.9 @ 07.01.2024 11:30
   - Initiale Version
