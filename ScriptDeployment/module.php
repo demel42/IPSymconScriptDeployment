@@ -277,12 +277,14 @@ class ScriptDeployment extends IPSModule
             'outdated' => 'updateable',
         ];
 
-        $values = [];
+        $topPath = $this->getSubPath(self::$TOP_DIR);
+        $topDict = $this->readDictonary($topPath);
         $curPath = $this->getSubPath(self::$CUR_DIR);
         $curDict = $this->readDictonary($curPath);
 
         $s = $this->ReadAttributeString('files');
         $curFiles = json_decode($s, true);
+        $values = [];
         foreach ($curFiles as $curFile) {
             $state = [];
             foreach ($stateFields as $fld => $msg) {
@@ -312,17 +314,43 @@ class ScriptDeployment extends IPSModule
                     'type'    => 'RowLayout',
                     'items'   => [
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => $curDict['version'],
-                            'enabled'  => false,
-                            'caption'  => 'Version',
+                            'type'    => 'RowLayout',
+                            'items'   => [
+                                [
+                                    'type'     => 'ValidationTextBox',
+                                    'value'    => $curDict['version'],
+                                    'enabled'  => false,
+                                    'caption'  => 'Installed version',
 
+                                ],
+                                [
+                                    'type'     => 'ValidationTextBox',
+                                    'value'    => date('d.m.Y H:i:s', (int) $curDict['tstamp']),
+                                    'enabled'  => false,
+                                    'caption'  => 'Timestamp',
+                                ],
+                            ],
                         ],
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => date('d.m.Y H:i:s', (int) $curDict['tstamp']),
-                            'enabled'  => false,
-                            'caption'  => 'Timestamp',
+                            'type'    => 'Label',
+                        ],
+                        [
+                            'type'    => 'RowLayout',
+                            'items'   => [
+                                [
+                                    'type'     => 'ValidationTextBox',
+                                    'value'    => $topDict['version'],
+                                    'enabled'  => false,
+                                    'caption'  => 'Repository version',
+
+                                ],
+                                [
+                                    'type'     => 'ValidationTextBox',
+                                    'value'    => date('d.m.Y H:i:s', (int) $topDict['tstamp']),
+                                    'enabled'  => false,
+                                    'caption'  => 'Timestamp',
+                                ],
+                            ],
                         ],
                     ],
                 ],
@@ -359,7 +387,7 @@ class ScriptDeployment extends IPSModule
                             'width'    => '100px',
                             'caption'  => 'ObjectID',
                             'onClick'  => $onClick_FileList,
-						],
+                        ],
                     ],
                     'add'      => false,
                     'delete'   => false,
@@ -1208,4 +1236,4 @@ Scripte manuell identifizieren
 Kategorien anlegen
 in die korrekte Kategorie verschieben
 
-*/
+ */

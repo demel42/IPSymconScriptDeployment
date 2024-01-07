@@ -37,7 +37,8 @@
 
 			"__actions__": "FileList",
 			"File list": "Liste der Dateien",
-			"Version": "Version",
+			"Installed version": "Installierte Version",
+			"Repository version": "Version des Repository",
 			"Timestamp": "Zeitpunkt",
 			"Ident": "Ident",
 			"Name": "Name",
