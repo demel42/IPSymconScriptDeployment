@@ -304,7 +304,7 @@ class ScriptDeployment extends IPSModule
             ];
         }
 
-        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField", json_encode(["field" => "openObject_FileList", "param" => "objectID", "value" => $FileList["id"]]));';
+        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode(["id" => $FileList["id"], "ident" => $FileList["ident"], "name" => $FileList["name"], "location" => $FileList["location"]]));';
         $formActions[] = [
             'type'      => 'ExpansionPanel',
             'caption'   => 'File list',
@@ -396,11 +396,78 @@ class ScriptDeployment extends IPSModule
                     'caption'  => 'Deployed scripts',
                 ],
                 [
-                    'type'     => 'OpenObjectButton',
-                    'objectID' => 0,
-                    'visible'  => false,
-                    'name'     => 'openObject_FileList',
-                    'caption'  => 'Open script',
+                    'type'    => 'RowLayout',
+                    'items'   => [
+                        [
+                            'type'     => 'OpenObjectButton',
+                            'objectID' => 0,
+                            'visible'  => false,
+                            'name'     => 'openObject_FileList',
+                            'caption'  => 'Open script',
+                        ],
+                        [
+                            'type'     => 'PopupButton',
+                            'name'     => 'connectScript_Popup',
+                            'visible'  => false,
+                            'popup'    => [
+                                'caption'   => 'Connect script',
+                                'items'     => [
+                                    [
+                                        'type'     => 'ValidationTextBox',
+                                        'name'     => 'connectScript_Ident',
+                                        'value'    => '',
+                                        'width'    => '100px',
+                                        'enabled'  => false,
+                                        'caption'  => 'Ident',
+                                    ],
+                                    [
+                                        'type'     => 'ValidationTextBox',
+                                        'name'     => 'connectScript_Name',
+                                        'value'    => '',
+                                        'width'    => '200px',
+                                        'enabled'  => false,
+                                        'caption'  => 'Name',
+                                    ],
+                                    [
+                                        'type'     => 'ValidationTextBox',
+                                        'name'     => 'connectScript_Location',
+                                        'value'    => '',
+                                        'width'    => '600px',
+                                        'enabled'  => false,
+                                        'caption'  => 'Location',
+                                    ],
+                                    [
+                                        'type'     => 'SelectScript',
+                                        'name'     => 'connectScript_ScriptID',
+                                        'value'    => 0,
+                                        'width'    => '600px',
+                                        'caption'  => 'Script'
+                                    ],
+                                    [
+                                        'type'     => 'CheckBox',
+                                        'name'     => 'connectScript_SetIdent',
+                                        'value'    => true,
+                                        'caption'  => 'Set ident in script object'
+                                    ],
+                                    [
+                                        'type'     => 'CheckBox',
+                                        'name'     => 'connectScript_AdjustLocation',
+                                        'value'    => true,
+                                        'caption'  => 'Adjust location of script'
+                                    ],
+                                ],
+                                'buttons' => [
+                                    [
+                                        'type'    => 'Button',
+                                        'caption' => 'Connect',
+                                        'onClick' => $this->GetModulePrefix() . '_ConnectScript($id, $connectScript_ScriptID, $connectScript_Ident, $connectScript_Location, $connectScript_SetIdent, $connectScript_AdjustLocation);'
+                                    ],
+                                ],
+                                'closeCaption' => 'Cancel',
+                            ],
+                            'caption' => 'Connect script',
+                        ],
+                    ],
                 ],
             ],
         ];
@@ -418,6 +485,75 @@ class ScriptDeployment extends IPSModule
         $formActions[] = $this->GetReferencesFormAction();
 
         return $formActions;
+    }
+
+    public function ConnectScript(int $scriptID, string $ident, string $location, bool $setIdent, bool $adjustLocation)
+    {
+        $this->SendDebug(__FUNCTION__, 'scriptID=' . $scriptID . ', setIdent=' . $this->bool2str($setIdent) . ', ident=' . $ident . ', adjustLocation=' . $this->bool2str($adjustLocation) . ', location=' . $location, 0);
+        if ($this->IsValidID($scriptID) == false) {
+            $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
+            $msg = $this->TranslateFormat('ID "{$scriptID}" is invalid', ['{$scriptID}' => $scriptID]);
+            $this->PopupMessage($msg);
+            return false;
+        }
+        if (IPS_ObjectExists($scriptID) == false) {
+            $this->SendDebug(__FUNCTION__, 'no object with ID ' . $scriptID, 0);
+            $msg = $this->TranslateFormat('No object with ID "{$scriptID}"', ['{$scriptID}' => $scriptID]);
+            $this->PopupMessage($msg);
+            return false;
+        }
+        if (IPS_ScriptExists($scriptID) == false) {
+            $this->SendDebug(__FUNCTION__, 'object with ID ' . $scriptID . ' is not a script', 0);
+            $msg = $this->TranslateFormat('Object with ID "{$scriptID}" is not a script', ['{$scriptID}' => $scriptID]);
+            $this->PopupMessage($msg);
+            return false;
+        }
+
+        if ($setIdent) {
+            if (IPS_SetIdent($scriptID, $ident) == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to set ident', 0);
+                $msg = $this->Translate('Unable to set ident');
+                $this->PopupMessage($msg);
+                return false;
+            }
+        }
+        if ($adjustLocation) {
+            $parents = $this->Location2ParentChain($location, true);
+            if ($parents === false) {
+                $this->SendDebug(__FUNCTION__, 'unable to resolve location ' . $location, 0);
+                $msg = $this->TranslateFormat('Unable to resolve location "{$location}"', ['{$location}' => $location]);
+                $this->PopupMessage($msg);
+                return false;
+            }
+            $parents = array_reverse($parents);
+            $parID = $parents[0];
+            if (IPS_SetParent($scriptID, $parID) == false) {
+                $this->SendDebug(__FUNCTION__, 'unable to set parent', 0);
+                $msg = $this->Translate('Unable to set parent');
+                $this->PopupMessage($msg);
+                return false;
+            }
+        }
+
+        $s = $this->ReadAttributeString('files');
+        $files = json_decode($s, true);
+        foreach ($files as $index => $file) {
+            if ($file['ident'] == $ident) {
+                $file['id'] = $scriptID;
+                $file['missing'] = false;
+                $file['added'] = true;
+                if ($adjustLocation) {
+                    $file['orphan'] = true;
+                    $file['moved'] = true;
+                }
+                $files[$index] = $file;
+                break;
+            }
+        }
+        $this->WriteAttributeString('files', json_encode($files));
+
+        $this->ReloadForm();
+        return true;
     }
 
     private function SetCheckTimer()
@@ -781,18 +917,10 @@ class ScriptDeployment extends IPSModule
         $location2parents = [];
         foreach ($newFiles as $newFile) {
             $location = $newFile['location'];
-            $path = explode('\\', $location);
-            $objID = 0;
-            $parents = [$objID];
-            foreach ($path as $part) {
-                @$objID = IPS_GetObjectIDByName($part, $objID);
-                if ($objID == false) {
-                    $parents = [];
-                    break;
-                }
-                $parents[] = $objID;
+            $parents = $this->Location2ParentChain($location, false);
+            if ($parents !== false) {
+                $location2parents[$location] = array_reverse($parents);
             }
-            $location2parents[$location] = array_reverse($parents);
         }
         $this->SendDebug(__FUNCTION__, 'location2parents=' . print_r($location2parents, true), 0);
 
@@ -867,15 +995,19 @@ class ScriptDeployment extends IPSModule
             }
 
             $ident = $newFile['ident'];
-            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident;
+            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident . '.php';
             $err = '';
             $curContent = $this->readFile($fname, $err);
+            if ($err != '') {
+                $this->SendDebug(__FUNCTION__, $err, 0);
+                continue;
+            }
             $ipsContent = IPS_GetScriptContent($objID);
             $r = strcmp($curContent, $ipsContent);
             if ($r != 0) {
                 $newFile['modified'] = true;
                 $newFiles[$index] = $newFile;
-                $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident;
+                $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident . '.php';
                 $ret = $this->writeFile($fname, $ipsContent, true, $err);
             }
         }
@@ -990,6 +1122,25 @@ class ScriptDeployment extends IPSModule
                 break;
             case 'ReloadForm':
                 $this->ReloadForm();
+                break;
+            case 'UpdateFormField_FileList':
+                $jparams = json_decode($value, true);
+                $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
+
+                $_id = $jparams['id'] != '' ? (int) substr($jparams['id'], 1) : 0;
+                $_ident = $jparams['ident'];
+                $_name = $jparams['name'];
+                $_location = $jparams['location'];
+
+                $this->UpdateFormField('openObject_FileList', 'objectID', $_id);
+                $this->UpdateFormField('openObject_FileList', 'visible', $_id ? true : false);
+
+                $this->UpdateFormField('connectScript_Popup', 'visible', true);
+                $this->UpdateFormField('connectScript_Ident', 'value', $_ident);
+                $this->UpdateFormField('connectScript_Name', 'value', $_name);
+                $this->UpdateFormField('connectScript_Location', 'value', $_location);
+                $this->UpdateFormField('connectScript_ScriptID', 'value', $_id);
+
                 break;
             default:
                 $r = false;
@@ -1162,6 +1313,14 @@ class ScriptDeployment extends IPSModule
             $this->SendDebug(__FUNCTION__, 'invalid json (' . json_last_error_msg() . ') in file ' . $fname . ', data=' . $data, 0);
             return false;
         }
+        foreach ($dict['files'] as $index => $d) {
+            $ident = $d['ident'];
+            if (preg_match('/([^\.]*)\.[a-z]+/', $ident, $r)) {
+                $ident = $r[1];
+            }
+            $ident = preg_replace('/[^a-zA-Z0-9_]/', '_', $ident);
+            $dict['files'][$index]['ident'] = $ident;
+        }
         return $dict;
     }
 
@@ -1224,16 +1383,50 @@ class ScriptDeployment extends IPSModule
     {
         return $this->getBasePath() . DIRECTORY_SEPARATOR . $subPath;
     }
+
+    private function Location2ParentChain($location, $createParents)
+    {
+        $path = explode('\\', $location);
+        $objID = 0;
+        $parents = [$objID];
+        foreach ($path as $part) {
+            $parID = $objID;
+            @$objID = IPS_GetObjectIDByName($part, $parID);
+            if ($objID == false) {
+                if ($createParents == false) {
+                    $parents = [];
+                    break;
+                }
+                $objID = IPS_CreateCategory();
+                if ($objID == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to create category', 0);
+                    return false;
+                }
+                IPS_SetName($objID, $part);
+                IPS_SetParent($objID, $parID);
+            }
+            $parents[] = $objID;
+        }
+        return $parents;
+    }
 }
 
 /*
 
-Scripte aktualisieren (-> wenn was geändert ist -> Frage)
+- curPath aktualisieren
+  -> 'git checkout ' . $branch . ' 2>&1'
+  -> 'git pull 2>&1'
+  -> 'git rev-parse HEAD 2>&1'
+  -> property 'commit' neu setzen
+  -> 'git config advice.detachedHead false 2>&1'
+  -> 'git checkout ' . $commit . ' 2>&1'
 
-Scripte automatisch identifizieren
-Scripte manuell identifizieren
-
-Kategorien anlegen
-in die korrekte Kategorie verschieben
-
+- Scripte aktualisieren (-> wenn was geändert ist -> Frage)
+  -> Sicherheitsabfrage: wirklich ??
+  -> property 'files' neu ermitteln
+  -> wenn 'modified' oder so: weitere Sicherheitsabfrage mit Abbruch / überbügeln / überspringen
+  -> curPath aktualisieren
+  -> Änderungen in IPS übernehmen
+    -> alle Scripte, die jetzt ungleich sind, Text neu setzen
+    -> alle neuen Scripte anlegen (incl ObjIdent), ggfs Pfad anlegen
  */
