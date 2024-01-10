@@ -53,7 +53,6 @@ class ScriptDeployment extends IPSModule
 
         $this->RegisterAttributeString('commit', '');
         $this->RegisterAttributeString('branches', json_encode([]));
-        $this->RegisterAttributeString('files', json_encode([]));
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
@@ -270,6 +269,7 @@ class ScriptDeployment extends IPSModule
         $stateFields = [
             'removed'  => 'deleted in repository',
             'added'    => 'added to repository',
+            'lost'     => 'missing in repository',
             'moved'    => 'local moved',
             'orphan'   => 'parent missing',
             'missing'  => 'local missing',
@@ -282,8 +282,7 @@ class ScriptDeployment extends IPSModule
         $curPath = $this->getSubPath(self::$CUR_DIR);
         $curDict = $this->readDictonary($curPath);
 
-        $s = $this->ReadAttributeString('files');
-        $curFiles = json_decode($s, true);
+        $curFiles = $this->ReadFileList();
         $values = [];
         foreach ($curFiles as $curFile) {
             $state = [];
@@ -296,178 +295,190 @@ class ScriptDeployment extends IPSModule
                 $state[] = 'ok';
             }
             $values[] = [
-                'ident'    => $curFile['ident'],
-                'name'     => $curFile['name'],
-                'location' => $curFile['location'],
-                'id'       => $this->IsValidID($curFile['id']) ? ('#' . $curFile['id']) : '',
-                'state'    => implode(', ', $state),
+                'filename'    => $curFile['filename'],
+                'name'        => $curFile['name'],
+                'location'    => $curFile['location'],
+                'id'          => $this->IsValidID($curFile['id']) ? ('#' . $curFile['id']) : '',
+                'state'       => implode(', ', $state),
             ];
         }
 
-        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode(["id" => $FileList["id"], "ident" => $FileList["ident"], "name" => $FileList["name"], "location" => $FileList["location"]]));';
+        $curVersion = isset($curDict['version']) ? $curDict['version'] : '';
+        $curTimestamp = isset($curDict['tstamp']) ? date('d.m.Y H:i:s', (int) $curDict['tstamp']) : '';
+        $topVersion = isset($topDict['version']) ? $topDict['version'] : '';
+        $topTimestamp = isset($topDict['tstamp']) ? date('d.m.Y H:i:s', (int) $topDict['tstamp']) : '';
+
+        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode(["id" => $FileList["id"], "filename" => $FileList["filename"], "name" => $FileList["name"], "location" => $FileList["location"]]));';
         $formActions[] = [
-            'type'      => 'ExpansionPanel',
-            'caption'   => 'File list',
-            'expanded'  => false,
-            'items'     => [
+            'type'    => 'RowLayout',
+            'items'   => [
                 [
                     'type'    => 'RowLayout',
                     'items'   => [
                         [
-                            'type'    => 'RowLayout',
-                            'items'   => [
-                                [
-                                    'type'     => 'ValidationTextBox',
-                                    'value'    => $curDict['version'],
-                                    'enabled'  => false,
-                                    'caption'  => 'Installed version',
-
-                                ],
-                                [
-                                    'type'     => 'ValidationTextBox',
-                                    'value'    => date('d.m.Y H:i:s', (int) $curDict['tstamp']),
-                                    'enabled'  => false,
-                                    'caption'  => 'Timestamp',
-                                ],
-                            ],
+                            'type'     => 'ValidationTextBox',
+                            'value'    => $curVersion,
+                            'enabled'  => false,
+                            'caption'  => 'Installed version',
                         ],
                         [
-                            'type'    => 'Label',
-                        ],
-                        [
-                            'type'    => 'RowLayout',
-                            'items'   => [
-                                [
-                                    'type'     => 'ValidationTextBox',
-                                    'value'    => $topDict['version'],
-                                    'enabled'  => false,
-                                    'caption'  => 'Repository version',
-
-                                ],
-                                [
-                                    'type'     => 'ValidationTextBox',
-                                    'value'    => date('d.m.Y H:i:s', (int) $topDict['tstamp']),
-                                    'enabled'  => false,
-                                    'caption'  => 'Timestamp',
-                                ],
-                            ],
+                            'type'     => 'ValidationTextBox',
+                            'value'    => $curTimestamp,
+                            'enabled'  => false,
+                            'caption'  => 'Timestamp',
                         ],
                     ],
                 ],
                 [
-                    'type'     => 'List',
-                    'name'     => 'FileList',
-                    'columns'  => [
-                        [
-                            'name'     => 'ident',
-                            'width'    => '150px',
-                            'caption'  => 'Ident',
-                            'onClick'  => $onClick_FileList,
-                        ],
-                        [
-                            'name'     => 'name',
-                            'width'    => '150px',
-                            'caption'  => 'Name',
-                            'onClick'  => $onClick_FileList,
-                        ],
-                        [
-                            'name'     => 'location',
-                            'width'    => 'auto',
-                            'caption'  => 'Location',
-                            'onClick'  => $onClick_FileList,
-                        ],
-                        [
-                            'name'     => 'state',
-                            'width'    => '400px',
-                            'caption'  => 'State',
-                            'onClick'  => $onClick_FileList,
-                        ],
-                        [
-                            'name'     => 'id',
-                            'width'    => '100px',
-                            'caption'  => 'ObjectID',
-                            'onClick'  => $onClick_FileList,
-                        ],
-                    ],
-                    'add'      => false,
-                    'delete'   => false,
-                    'values'   => $values,
-                    'rowCount' => count($values) > 0 ? count($values) : 1,
-                    'caption'  => 'Deployed scripts',
+                    'type'    => 'Label',
                 ],
                 [
                     'type'    => 'RowLayout',
                     'items'   => [
                         [
-                            'type'     => 'OpenObjectButton',
-                            'objectID' => 0,
-                            'visible'  => false,
-                            'name'     => 'openObject_FileList',
-                            'caption'  => 'Open script',
+                            'type'     => 'ValidationTextBox',
+                            'value'    => $topVersion,
+                            'enabled'  => false,
+                            'caption'  => 'Repository version',
                         ],
                         [
-                            'type'     => 'PopupButton',
-                            'name'     => 'connectScript_Popup',
-                            'visible'  => false,
-                            'popup'    => [
-                                'caption'   => 'Connect script',
-                                'items'     => [
-                                    [
-                                        'type'     => 'ValidationTextBox',
-                                        'name'     => 'connectScript_Ident',
-                                        'value'    => '',
-                                        'width'    => '100px',
-                                        'enabled'  => false,
-                                        'caption'  => 'Ident',
-                                    ],
-                                    [
-                                        'type'     => 'ValidationTextBox',
-                                        'name'     => 'connectScript_Name',
-                                        'value'    => '',
-                                        'width'    => '200px',
-                                        'enabled'  => false,
-                                        'caption'  => 'Name',
-                                    ],
-                                    [
-                                        'type'     => 'ValidationTextBox',
-                                        'name'     => 'connectScript_Location',
-                                        'value'    => '',
-                                        'width'    => '600px',
-                                        'enabled'  => false,
-                                        'caption'  => 'Location',
-                                    ],
-                                    [
-                                        'type'     => 'SelectScript',
-                                        'name'     => 'connectScript_ScriptID',
-                                        'value'    => 0,
-                                        'width'    => '600px',
-                                        'caption'  => 'Script'
-                                    ],
-                                    [
-                                        'type'     => 'CheckBox',
-                                        'name'     => 'connectScript_SetIdent',
-                                        'value'    => true,
-                                        'caption'  => 'Set ident in script object'
-                                    ],
-                                    [
-                                        'type'     => 'CheckBox',
-                                        'name'     => 'connectScript_AdjustLocation',
-                                        'value'    => true,
-                                        'caption'  => 'Adjust location of script'
-                                    ],
-                                ],
-                                'buttons' => [
-                                    [
-                                        'type'    => 'Button',
-                                        'caption' => 'Connect',
-                                        'onClick' => $this->GetModulePrefix() . '_ConnectScript($id, $connectScript_ScriptID, $connectScript_Ident, $connectScript_Location, $connectScript_SetIdent, $connectScript_AdjustLocation);'
-                                    ],
-                                ],
-                                'closeCaption' => 'Cancel',
-                            ],
-                            'caption' => 'Connect script',
+                            'type'     => 'ValidationTextBox',
+                            'value'    => $topTimestamp,
+                            'enabled'  => false,
+                            'caption'  => 'Timestamp',
                         ],
                     ],
+                ],
+            ],
+        ];
+        $formActions[] = [
+            'type'     => 'List',
+            'name'     => 'FileList',
+            'columns'  => [
+                [
+                    'name'     => 'filename',
+                    'width'    => '350px',
+                    'caption'  => 'Filename',
+                    'onClick'  => $onClick_FileList,
+                ],
+                [
+                    'name'     => 'name',
+                    'width'    => '350px',
+                    'caption'  => 'Name',
+                    'onClick'  => $onClick_FileList,
+                ],
+                [
+                    'name'     => 'location',
+                    'width'    => 'auto',
+                    'caption'  => 'Target location',
+                    'onClick'  => $onClick_FileList,
+                ],
+                [
+                    'name'     => 'state',
+                    'width'    => '250px',
+                    'caption'  => 'State',
+                    'onClick'  => $onClick_FileList,
+                ],
+                [
+                    'name'     => 'id',
+                    'width'    => '80px',
+                    'caption'  => 'ObjectID',
+                    'onClick'  => $onClick_FileList,
+                ],
+            ],
+            'add'      => false,
+            'delete'   => false,
+            'values'   => $values,
+            'rowCount' => count($values) > 0 ? count($values) : 1,
+            'caption'  => 'Deployed scripts',
+        ];
+        $formActions[] = [
+            'type'    => 'RowLayout',
+            'items'   => [
+                [
+                    'type'     => 'OpenObjectButton',
+                    'objectID' => 0,
+                    'visible'  => false,
+                    'name'     => 'openObject_FileList',
+                    'caption'  => 'Open script',
+                ],
+                [
+                    'type'     => 'PopupButton',
+                    'name'     => 'connectScript_Popup',
+                    'visible'  => false,
+                    'popup'    => [
+                        'caption'   => 'Connect script',
+                        'items'     => [
+                            [
+                                'type'     => 'ValidationTextBox',
+                                'name'     => 'connectScript_Filename',
+                                'value'    => '',
+                                'width'    => '100px',
+                                'enabled'  => false,
+                                'caption'  => 'Filename',
+                            ],
+                            [
+                                'type'     => 'ValidationTextBox',
+                                'name'     => 'connectScript_Name',
+                                'value'    => '',
+                                'width'    => '200px',
+                                'enabled'  => false,
+                                'caption'  => 'Name',
+                            ],
+                            [
+                                'type'     => 'ValidationTextBox',
+                                'name'     => 'connectScript_Location',
+                                'value'    => '',
+                                'width'    => '600px',
+                                'enabled'  => false,
+                                'caption'  => 'Target location',
+                            ],
+                            [
+                                'type'     => 'SelectScript',
+                                'name'     => 'connectScript_ScriptID',
+                                'value'    => 0,
+                                'width'    => '600px',
+                                'caption'  => 'Script'
+                            ],
+                            [
+                                'type'     => 'CheckBox',
+                                'name'     => 'connectScript_AdjustLocation',
+                                'value'    => true,
+                                'caption'  => 'Adjust location of script'
+                            ],
+                        ],
+                        'buttons' => [
+                            [
+                                'type'    => 'Button',
+                                'caption' => 'Connect',
+                                'onClick' => 'IPS_RequestAction($id, "ConnectScript", json_encode(["scriptID" => $connectScript_ScriptID, "filename" => $connectScript_Filename, "location" => $connectScript_Location, "adjustLocation" => $connectScript_AdjustLocation]));',
+                            ],
+                        ],
+                        'closeCaption' => 'Cancel',
+                    ],
+                    'caption' => 'Connect script',
+                ],
+                [
+                    'type'     => 'Button',
+                    'caption'  => 'Delete item',
+                    'name'     => 'DeleteItem',
+                    'visible'  => false,
+                    'onClick'  => 'IPS_RequestAction($id, "DeleteItem", json_encode(["filename" => $FileList["filename"]]));',
+                ],
+            ],
+        ];
+        $formActions[] = [
+            'type'    => 'RowLayout',
+            'items'   => [
+                [
+                    'type'    => 'Button',
+                    'caption' => 'Search missing',
+                    'onClick' => 'IPS_RequestAction($id, "SearchMissing", ""); IPS_RequestAction($id, "ReloadForm", "");',
+                ],
+                [
+                    'type'    => 'Button',
+                    'caption' => 'Perform adjustment',
+                    'onClick' => 'IPS_RequestAction($id, "PerformAdjustment", ""); IPS_RequestAction($id, "ReloadForm", "");',
                 ],
             ],
         ];
@@ -487,9 +498,23 @@ class ScriptDeployment extends IPSModule
         return $formActions;
     }
 
-    public function ConnectScript(int $scriptID, string $ident, string $location, bool $setIdent, bool $adjustLocation)
+    private function DeleteItem(string $filename)
     {
-        $this->SendDebug(__FUNCTION__, 'scriptID=' . $scriptID . ', setIdent=' . $this->bool2str($setIdent) . ', ident=' . $ident . ', adjustLocation=' . $this->bool2str($adjustLocation) . ', location=' . $location, 0);
+        $newFiles = [];
+        $files = $this->ReadFileList();
+        foreach ($files as $index => $file) {
+            if ($file['filename'] != $filename) {
+                $newFiles[] = $file;
+            }
+        }
+        $this->WriteFileList($newFiles);
+        $this->ReloadForm();
+        return true;
+    }
+
+    private function ConnectScript(int $scriptID, string $filename, string $location, bool $adjustLocation)
+    {
+        $this->SendDebug(__FUNCTION__, 'scriptID=' . $scriptID . ', filename=' . $filename . ', adjustLocation=' . $this->bool2str($adjustLocation) . ', location=' . $location, 0);
         if ($this->IsValidID($scriptID) == false) {
             $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
             $msg = $this->TranslateFormat('ID "{$scriptID}" is invalid', ['{$scriptID}' => $scriptID]);
@@ -509,49 +534,38 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        if ($setIdent) {
-            if (IPS_SetIdent($scriptID, $ident) == false) {
-                $this->SendDebug(__FUNCTION__, 'unable to set ident', 0);
-                $msg = $this->Translate('Unable to set ident');
-                $this->PopupMessage($msg);
-                return false;
-            }
-        }
         if ($adjustLocation) {
             $parents = $this->Location2ParentChain($location, true);
             if ($parents === false) {
-                $this->SendDebug(__FUNCTION__, 'unable to resolve location ' . $location, 0);
+                $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
                 $msg = $this->TranslateFormat('Unable to resolve location "{$location}"', ['{$location}' => $location]);
                 $this->PopupMessage($msg);
                 return false;
             }
-            $parents = array_reverse($parents);
             $parID = $parents[0];
             if (IPS_SetParent($scriptID, $parID) == false) {
-                $this->SendDebug(__FUNCTION__, 'unable to set parent', 0);
+                $this->SendDebug(__FUNCTION__, 'unable to set parent ' . $parID . ' to script ' . $scriptID, 0);
                 $msg = $this->Translate('Unable to set parent');
                 $this->PopupMessage($msg);
                 return false;
             }
         }
 
-        $s = $this->ReadAttributeString('files');
-        $files = json_decode($s, true);
+        $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
-            if ($file['ident'] == $ident) {
+            if ($file['filename'] == $filename) {
                 $file['id'] = $scriptID;
                 $file['missing'] = false;
-                $file['added'] = true;
+                $file['added'] = false;
                 if ($adjustLocation) {
-                    $file['orphan'] = true;
-                    $file['moved'] = true;
+                    $file['orphan'] = false;
+                    $file['moved'] = false;
                 }
                 $files[$index] = $file;
                 break;
             }
         }
-        $this->WriteAttributeString('files', json_encode($files));
-
+        $this->WriteFileList($files);
         $this->ReloadForm();
         return true;
     }
@@ -737,14 +751,11 @@ class ScriptDeployment extends IPSModule
             }
         }
 
+        $branch = $this->getBranch();
+        $commit = $this->getCommit();
+
         $topPath = $this->getSubPath(self::$TOP_DIR);
         $curPath = $this->getSubPath(self::$CUR_DIR);
-
-        $branch = $this->ReadPropertyString('branch');
-        if ($branch == '') {
-            $branch = 'main';
-        }
-        $commit = $this->ReadAttributeString('commit');
 
         if ($this->SyncRepository(self::$TOP_DIR, $branch, '') == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
@@ -757,7 +768,6 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        // xxxx das muss noch woanders in (ApplyChanges?)
         if ($this->execute('git branch -r 2>&1', $output) == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
@@ -773,32 +783,11 @@ class ScriptDeployment extends IPSModule
         $this->WriteAttributeString('branches', json_encode($allBranch));
         $this->SendDebug(__FUNCTION__, 'allBranch=' . implode(', ', $allBranch), 0);
         if (in_array($branch, $allBranch) == false) {
-            $this->SendDebug(__FUNCTION__, 'unknown branch "' . $branch . '" -> ignore', 0);
-            $branch == '';
-        }
-        // xxxx
-
-        if ($this->execute('git diff --stat ' . $commit . ' 2>&1', $output) == false) {
+            $this->SendDebug(__FUNCTION__, 'unknown branch "' . $branch . '"', 0);
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
-        $changedFiles = [];
-        foreach ($output as $s) {
-            if (preg_match('/[ ]*files\/([^ ]*)[ ]*\| .*/', $s, $r)) {
-                $changedFiles[] = $r[1];
-            }
-        }
-        $this->SendDebug(__FUNCTION__, 'changedFiles=' . print_r($changedFiles, true), 0);
-
-        $topDict = $this->readDictonary($topPath);
-        if ($topDict === false) {
-            $this->SendDebug(__FUNCTION__, 'no valid top-dictionary', 0);
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
 
         if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
@@ -821,281 +810,50 @@ class ScriptDeployment extends IPSModule
             $this->WriteAttributeString('commit', $curCommit);
         }
 
-        $curDict = $this->readDictonary($curPath);
-        if ($curDict === false) {
-            $this->SendDebug(__FUNCTION__, 'no valid cur-dictionary', 0);
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $this->SendDebug(__FUNCTION__, 'cur-dictionary=' . print_r($curDict, true), 0);
-
-        $curFiles = $curDict['files'];
-        $topFiles = $topDict['files'];
-
-        $s = $this->ReadAttributeString('files');
-        $oldFiles = json_decode($s, true);
-
-        $dflt = [
-            'ident'    => '',
-            'name'     => '',
-            'location' => '',
-            'id'       => 0,
-            'removed'  => false,
-            'added'    => false,
-            'moved'    => false,
-            'orphan'   => false,
-            'missing'  => false,
-            'modified' => false,
-            'outdated' => false,
-        ];
-
-        $newFiles = [];
-        foreach ($curFiles as $curFile) {
-            $fnd = false;
-            foreach ($oldFiles as $oldFile) {
-                if ($curFile['ident'] == $oldFile['ident']) {
-                    $fnd = true;
-                    break;
-                }
-            }
-            $newFile = $dflt;
-            $newFile['ident'] = $curFile['ident'];
-            $newFile['name'] = $curFile['name'];
-            $newFile['location'] = $curFile['location'];
-            if ($fnd) {
-                $newFile['id'] = $oldFile['id'];
-                if (in_array($curFile['ident'], $changedFiles)) {
-                    $newFile['outdated'] = true;
-                }
-            } else {
-                $newFile['missing'] = true;
-            }
-            $newFiles[] = $newFile;
-        }
-        foreach ($oldFiles as $oldFile) {
-            $objID = $oldFile['id'];
-            if ($objID == 0) {
-                continue;
-            }
-
-            $fnd = false;
-            foreach ($curFiles as $curFile) {
-                if ($curFile['ident'] == $oldFile['ident']) {
-                    $fnd = true;
-                    break;
-                }
-            }
-            if ($fnd == false) {
-                $newFile = $dflt;
-                $newFile['ident'] = $oldFile['ident'];
-                $newFile['name'] = $oldFile['name'];
-                $newFile['location'] = $oldFile['location'];
-                $newFile['id'] = $oldFile['id'];
-                $newFile['removed'] = true;
-                $newFiles[] = $newFile;
-            }
-        }
-        foreach ($topFiles as $topFile) {
-            $fnd = false;
-            foreach ($newFiles as $newFile) {
-                if ($topFile['ident'] == $newFile['ident']) {
-                    $fnd = true;
-                    break;
-                }
-            }
-            if ($fnd == false) {
-                $newFile = $dflt;
-                $newFile['ident'] = $topFile['ident'];
-                $newFile['name'] = $topFile['name'];
-                $newFile['location'] = $topFile['location'];
-                $newFile['added'] = true;
-                $newFiles[] = $newFile;
-            }
-        }
-
-        $location2parents = [];
-        foreach ($newFiles as $newFile) {
-            $location = $newFile['location'];
-            $parents = $this->Location2ParentChain($location, false);
-            if ($parents !== false) {
-                $location2parents[$location] = array_reverse($parents);
-            }
-        }
-        $this->SendDebug(__FUNCTION__, 'location2parents=' . print_r($location2parents, true), 0);
-
-        // fehlende Dateien identifizieren
-        foreach ($newFiles as $index => $newFile) {
-            $objID = $newFile['id'];
-            if ($objID == 0) {
-                continue;
-            }
-
-            $location = $newFile['location'];
-            $parents = $location2parents[$location];
-            if (count($parents) == 0) {
-                continue;
-            }
-
-            $parID = $parents[0];
-            $ident = $newFile['ident'];
-            $objID = @IPS_GetObjectIDByIdent($ident, $parID);
-            if ($objID == false) {
-                $name = $newFile['name'];
-                $objID = @IPS_GetObjectIDByName($name, $parID);
-            }
-            if ($objID) {
-                $newFile['id'] = $objID;
-                $newFile['missing'] = false;
-                $newFiles[$index] = $newFile;
-                continue;
-            }
-        }
-
-        foreach ($newFiles as $index => $newFile) {
-            $objID = $newFile['id'];
-            if ($objID == 0) {
-                continue;
-            }
-
-            if (IPS_ObjectExists($objID) == false) {
-                $newFile['id'] = 0;
-                $newFile['missing'] = true;
-                $newFiles[$index] = $newFile;
-                continue;
-            }
-
-            $parID = IPS_GetParent($objID);
-
-            $location = $newFile['location'];
-            $parents = $location2parents[$location];
-            if (count($parents) == 0) {
-                $newFile['orphan'] = true;
-                $newFiles[$index] = $newFile;
-                continue;
-            }
-            if ($parents[0] != $parID) {
-                $newFile['moved'] = true;
-                $newFiles[$index] = $newFile;
-                continue;
-            }
-        }
-
-        $chgPath = $this->getSubPath(self::$CHG_DIR);
-        if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
+        if ($this->CheckFileList() == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
 
-        foreach ($newFiles as $index => $newFile) {
-            $objID = $newFile['id'];
-            if ($objID == 0) {
-                continue;
-            }
-
-            $ident = $newFile['ident'];
-            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident . '.php';
-            $err = '';
-            $curContent = $this->readFile($fname, $err);
-            if ($err != '') {
-                $this->SendDebug(__FUNCTION__, $err, 0);
-                continue;
-            }
-            $ipsContent = IPS_GetScriptContent($objID);
-            $r = strcmp($curContent, $ipsContent);
-            if ($r != 0) {
-                $newFile['modified'] = true;
-                $newFiles[$index] = $newFile;
-                $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $ident . '.php';
-                $ret = $this->writeFile($fname, $ipsContent, true, $err);
-            }
-        }
-
-        if ($this->changeDir($chgPath) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-
-        $patchFile = $basePath . DIRECTORY_SEPARATOR . 'cur.patch';
-        if ($this->execute('git diff > ' . $patchFile . ' 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $patchContent = $this->readFile($patchFile, $err);
-        if ($this->GetMediaData('DifferenceToCurrent') != $patchContent) {
-            $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
-        }
-        if (unlink($patchFile) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->execute('git diff -R ' . $branch . ' > ' . $patchFile . ' 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $patchContent = $this->readFile($patchFile, $err);
-        if ($this->GetMediaData('DifferenceToTop') != $patchContent) {
-            $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
-        }
-        if (unlink($patchFile) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-
-        if ($this->changeDir($basePath) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->rmDir($chgPath) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-
-        $this->SendDebug(__FUNCTION__, 'newFiles=' . print_r($newFiles, true), 0);
-        $this->WriteAttributeString('files', json_encode($newFiles));
+        $files = $this->ReadFileList();
 
         $added = 0;
         $missing = 0;
+        $lost = 0;
         $modified = 0;
         $moved = 0;
         $orphan = 0;
         $outdated = 0;
         $removed = 0;
-        foreach ($newFiles as $newFile) {
-            if ($newFile['added']) {
+        foreach ($files as $file) {
+            if ($file['added']) {
                 $added++;
             }
-            if ($newFile['missing']) {
+            if ($file['missing']) {
                 $missing++;
             }
-            if ($newFile['modified']) {
+            if ($file['lost']) {
+                $lost++;
+            }
+            if ($file['modified']) {
                 $modified++;
             }
-            if ($newFile['moved']) {
+            if ($file['moved']) {
                 $moved++;
             }
-            if ($newFile['orphan']) {
+            if ($file['orphan']) {
                 $orphan++;
             }
-            if ($newFile['outdated']) {
+            if ($file['outdated']) {
                 $outdated++;
             }
-            if ($newFile['removed']) {
+            if ($file['removed']) {
                 $removed++;
             }
         }
 
-        if ($missing || $moved || $orphan) {
+        if ($lost || $missing || $moved || $orphan) {
             $state = self::$STATE_UNCLEAR;
         } elseif ($modified) {
             $state = self::$STATE_MODIFIED;
@@ -1120,26 +878,48 @@ class ScriptDeployment extends IPSModule
             case 'PerformCheck':
                 $this->PerformCheck();
                 break;
+            case 'SearchMissing':
+                $this->SearchMissing();
+                break;
+            case 'PerformAdjustment':
+                $this->PerformAdjustment();
+                break;
+            case 'ConnectScript':
+                $jparams = json_decode($value, true);
+                $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
+                $scriptID = $jparams['scriptID'];
+                $filename = $jparams['filename'];
+                $location = $jparams['location'];
+                $adjustLocation = $jparams['adjustLocation'];
+                $this->ConnectScript($scriptID, $filename, $location, $adjustLocation);
+                break;
+            case 'DeleteItem':
+                $jparams = json_decode($value, true);
+                $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
+                $filename = $jparams['filename'];
+                $this->DeleteItem($filename);
+                break;
             case 'ReloadForm':
                 $this->ReloadForm();
                 break;
             case 'UpdateFormField_FileList':
                 $jparams = json_decode($value, true);
                 $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
+                $id = $jparams['id'] != '' ? (int) substr($jparams['id'], 1) : 0;
+                $filename = $jparams['filename'];
+                $name = $jparams['name'];
+                $location = $jparams['location'];
 
-                $_id = $jparams['id'] != '' ? (int) substr($jparams['id'], 1) : 0;
-                $_ident = $jparams['ident'];
-                $_name = $jparams['name'];
-                $_location = $jparams['location'];
-
-                $this->UpdateFormField('openObject_FileList', 'objectID', $_id);
-                $this->UpdateFormField('openObject_FileList', 'visible', $_id ? true : false);
+                $this->UpdateFormField('openObject_FileList', 'objectID', $id);
+                $this->UpdateFormField('openObject_FileList', 'visible', $id ? true : false);
 
                 $this->UpdateFormField('connectScript_Popup', 'visible', true);
-                $this->UpdateFormField('connectScript_Ident', 'value', $_ident);
-                $this->UpdateFormField('connectScript_Name', 'value', $_name);
-                $this->UpdateFormField('connectScript_Location', 'value', $_location);
-                $this->UpdateFormField('connectScript_ScriptID', 'value', $_id);
+                $this->UpdateFormField('connectScript_Filename', 'value', $filename);
+                $this->UpdateFormField('connectScript_Name', 'value', $name);
+                $this->UpdateFormField('connectScript_Location', 'value', $location);
+                $this->UpdateFormField('connectScript_ScriptID', 'value', $id);
+
+                $this->UpdateFormField('DeleteItem', 'visible', $id ? true : false);
 
                 break;
             default:
@@ -1313,14 +1093,6 @@ class ScriptDeployment extends IPSModule
             $this->SendDebug(__FUNCTION__, 'invalid json (' . json_last_error_msg() . ') in file ' . $fname . ', data=' . $data, 0);
             return false;
         }
-        foreach ($dict['files'] as $index => $d) {
-            $ident = $d['ident'];
-            if (preg_match('/([^\.]*)\.[a-z]+/', $ident, $r)) {
-                $ident = $r[1];
-            }
-            $ident = preg_replace('/[^a-zA-Z0-9_]/', '_', $ident);
-            $dict['files'][$index]['ident'] = $ident;
-        }
         return $dict;
     }
 
@@ -1407,26 +1179,455 @@ class ScriptDeployment extends IPSModule
             }
             $parents[] = $objID;
         }
-        return $parents;
+        return array_reverse($parents);
+    }
+
+    private function getBranch()
+    {
+        $branch = $this->ReadPropertyString('branch');
+        if ($branch == '') {
+            $branch = 'main';
+        }
+        return $branch;
+    }
+
+    private function getCommit()
+    {
+        $commit = $this->ReadAttributeString('commit');
+        return $commit;
+    }
+
+    private function CheckFileList()
+    {
+        $branch = $this->getBranch();
+        $commit = $this->getCommit();
+
+        $basePath = $this->getBasePath();
+        $topPath = $this->getSubPath(self::$TOP_DIR);
+        $curPath = $this->getSubPath(self::$CUR_DIR);
+
+        $topDict = $this->readDictonary($topPath);
+        if ($topDict === false) {
+            $this->SendDebug(__FUNCTION__, 'no valid top-dictionary', 0);
+            return false;
+        }
+        $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
+
+        if ($this->changeDir($topPath) == false) {
+            return false;
+        }
+        if ($this->execute('git diff --stat ' . $commit . ' 2>&1', $output) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
+            return false;
+        }
+        $updateableFiles = [];
+        foreach ($output as $s) {
+            if (preg_match('/[ ]*files\/([^ ]*)[ ]*\| .*/', $s, $r)) {
+                $updateableFiles[] = $r[1];
+            }
+        }
+        $this->SendDebug(__FUNCTION__, 'updateableFiles=' . print_r($updateableFiles, true), 0);
+
+        $curDict = $this->readDictonary($curPath);
+        if ($curDict === false) {
+            $this->SendDebug(__FUNCTION__, 'no valid cur-dictionary', 0);
+            return false;
+        }
+        $this->SendDebug(__FUNCTION__, 'cur-dictionary=' . print_r($curDict, true), 0);
+
+        $curFiles = $curDict['files'];
+        $topFiles = $topDict['files'];
+
+        $oldFiles = $this->ReadFileList();
+
+        $dflt = [
+            'filename' => '',
+            'name'     => '',
+            'location' => '',
+            'id'       => 0,
+            'removed'  => false,
+            'added'    => false,
+            'lost'     => false,
+            'moved'    => false,
+            'orphan'   => false,
+            'missing'  => false,
+            'modified' => false,
+            'outdated' => false,
+        ];
+
+        $newFiles = [];
+        foreach ($curFiles as $curFile) {
+            $fnd = false;
+            foreach ($oldFiles as $oldFile) {
+                if ($curFile['filename'] == $oldFile['filename']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            $newFile = $dflt;
+            $newFile['filename'] = $curFile['filename'];
+            $newFile['name'] = $curFile['name'];
+            $newFile['location'] = $curFile['location'];
+            if ($fnd) {
+                $newFile['id'] = $oldFile['id'];
+                if ($this->IsValidID($newFile['id']) == false) {
+                    $newFile['id'] = 0;
+                }
+            }
+            if ($newFile['id'] == 0) {
+                $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
+                $curContent = $this->readFile($fname, $err);
+                $this->SendDebug(__FUNCTION__, 'fname=' . $fname . ', content=' . $curContent, 0);
+                if ($err != '') {
+                    if ($oldFile['lost']) {
+                        continue;
+                    }
+                    $newFile['lost'] = true;
+                } else {
+                    $newFile['missing'] = true;
+                }
+            } else {
+                if (in_array($curFile['filename'], $updateableFiles)) {
+                    $newFile['outdated'] = true;
+                }
+            }
+            $newFiles[] = $newFile;
+        }
+        foreach ($oldFiles as $oldFile) {
+            $scriptID = $oldFile['id'];
+            if ($scriptID == 0) {
+                continue;
+            }
+
+            $fnd = false;
+            foreach ($curFiles as $curFile) {
+                if ($curFile['filename'] == $oldFile['filename']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            if ($fnd == false) {
+                $newFile = $dflt;
+                $newFile['filename'] = $oldFile['filename'];
+                $newFile['name'] = $oldFile['name'];
+                $newFile['location'] = $oldFile['location'];
+                $newFile['id'] = $oldFile['id'];
+                $newFile['removed'] = true;
+                $newFiles[] = $newFile;
+            }
+        }
+        foreach ($topFiles as $topFile) {
+            $fnd = false;
+            foreach ($newFiles as $newFile) {
+                if ($topFile['filename'] == $newFile['filename']) {
+                    $fnd = true;
+                    break;
+                }
+            }
+            if ($fnd == false) {
+                $newFile = $dflt;
+                $newFile['filename'] = $topFile['filename'];
+                $newFile['name'] = $topFile['name'];
+                $newFile['location'] = $topFile['location'];
+                $newFile['added'] = true;
+                $newFiles[] = $newFile;
+            }
+        }
+        foreach ($newFiles as $index => $newFile) {
+            $scriptID = $newFile['id'];
+            if ($scriptID == 0) {
+                continue;
+            }
+
+            if (IPS_ObjectExists($scriptID) == false) {
+                $newFile['id'] = 0;
+                $newFile['missing'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+
+            $parID = IPS_GetParent($scriptID);
+            $location = $newFile['location'];
+            $parents = $this->Location2ParentChain($location, false);
+            if (count($parents) == 0) {
+                $newFile['orphan'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+            if ($parents[0] != $parID) {
+                $newFile['moved'] = true;
+                $newFiles[$index] = $newFile;
+                continue;
+            }
+        }
+
+        $chgPath = $this->getSubPath(self::$CHG_DIR);
+        if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
+            return false;
+        }
+
+        foreach ($newFiles as $index => $newFile) {
+            $scriptID = $newFile['id'];
+            if ($scriptID == 0) {
+                continue;
+            }
+
+            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
+            $err = '';
+            $curContent = $this->readFile($fname, $err);
+            if ($err != '') {
+                continue;
+            }
+            $ipsContent = IPS_GetScriptContent($scriptID);
+            $r = strcmp($curContent, $ipsContent);
+            if ($r != 0) {
+                $newFile['modified'] = true;
+                $newFiles[$index] = $newFile;
+                $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
+                $ret = $this->writeFile($fname, $ipsContent, true, $err);
+            }
+        }
+
+        if ($this->changeDir($chgPath) == false) {
+            return false;
+        }
+
+        $patchFile = $basePath . DIRECTORY_SEPARATOR . 'cur.patch';
+        if ($this->execute('git diff > ' . $patchFile . ' 2>&1', $output) == false) {
+            return false;
+        }
+        $patchContent = $this->readFile($patchFile, $err);
+        if ($this->GetMediaData('DifferenceToCurrent') != $patchContent) {
+            $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        }
+        if (unlink($patchFile) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
+            return false;
+        }
+        if ($this->execute('git diff -R ' . $branch . ' > ' . $patchFile . ' 2>&1', $output) == false) {
+            return false;
+        }
+        $patchContent = $this->readFile($patchFile, $err);
+        if ($this->GetMediaData('DifferenceToTop') != $patchContent) {
+            $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        }
+        if (unlink($patchFile) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
+            return false;
+        }
+
+        if ($this->changeDir($basePath) == false) {
+            return false;
+        }
+        if ($this->rmDir($chgPath) == false) {
+            return false;
+        }
+
+        $this->SendDebug(__FUNCTION__, 'newFiles=' . print_r($newFiles, true), 0);
+        $this->WriteFileList($newFiles);
+
+        return true;
+    }
+
+    private function SearchMissing()
+    {
+        $files = $this->ReadFileList();
+        foreach ($files as $index => $file) {
+            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
+            if ($file['missing'] == false || $file['id'] != 0) {
+                continue;
+            }
+
+            $location = $file['location'];
+            $parents = $this->Location2ParentChain($location, false);
+            if (count($parents) == 0) {
+                $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
+                continue;
+            }
+            $parID = $parents[0];
+            $name = $file['name'];
+            $scriptID = @IPS_GetObjectIDByName($name, $parID);
+            if ($scriptID) {
+                $this->SendDebug(__FUNCTION__, 'script ' . $scriptID . ' found by name "' . $name . '"', 0);
+                $file['id'] = $scriptID;
+                $file['missing'] = false;
+                $files[$index] = $file;
+            }
+        }
+        $this->WriteFileList($files);
+
+        return true;
+    }
+
+    private function PerformAdjustment()
+    {
+        $branch = $this->getBranch();
+        $commit = $this->getCommit();
+
+        $basePath = $this->getBasePath();
+        $curPath = $this->getSubPath(self::$CUR_DIR);
+
+        if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
+            return false;
+        }
+        if ($this->changeDir($curPath) == false) {
+            return false;
+        }
+        if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
+            return false;
+        }
+        if ($this->execute('git pull 2>&1', $output) == false) {
+            return false;
+        }
+        if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
+            return false;
+        }
+        $commit = $output[0];
+        $this->SendDebug(__FUNCTION__, 'new commit=' . $commit, 0);
+        $this->WriteAttributeString('commit', $commit);
+        $this->execute('git config advice.detachedHead false', $output);
+        if ($this->execute('git checkout ' . $commit . ' 2>&1', $output) == false) {
+            return false;
+        }
+
+        $this->CheckFileList();
+
+        $files = $this->ReadFileList();
+        foreach ($files as $index => $file) {
+            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
+
+            $curContent = '';
+            if ($file['missing'] || $file['modified']) {
+                $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $file['filename'];
+                $err = '';
+                $curContent = $this->readFile($fname, $err);
+                if ($err != '') {
+                    continue;
+                }
+            }
+
+            if ($file['missing']) {
+                $scriptID = IPS_CreateScript(SCRIPTTYPE_PHP);
+                if (IPS_SetScriptContent($scriptID, $curContent) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set content to script ' . $scriptID, 0);
+                    continue;
+                }
+                $name = $file['name'];
+                if (IPS_SetName($scriptID, $name) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set name "' . $name . '" to script ' . $scriptID, 0);
+                    continue;
+                }
+                $location = $file['location'];
+                $parents = $this->Location2ParentChain($location, true);
+                if ($parents === false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
+                    continue;
+                }
+                $parID = $parents[0];
+                if (IPS_SetParent($scriptID, $parID) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set parent ' . $parID . ' to script ' . $scriptID, 0);
+                    continue;
+                }
+
+                $file['id'] = $scriptID;
+                $file['missing'] = false;
+                $files[$index] = $file;
+                $this->SendDebug(__FUNCTION__, 'create script ' . $scriptID . ', file=' . print_r($file, true), 0);
+            }
+
+            if ($file['modified']) {
+                $scriptID = $file['id'];
+                if (IPS_SetScriptContent($scriptID, $curContent) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set content to script ' . $scriptID, 0);
+                    continue;
+                }
+                $file['modified'] = false;
+                $files[$index] = $file;
+                $this->SendDebug(__FUNCTION__, 'update script ' . $scriptID . ', file=' . print_r($file, true), 0);
+            }
+
+            $scriptID = $file['id'];
+            if ($scriptID != 0) {
+                $this->SetObjectInfo($scriptID, $file['filename'], $file['location'], $file['name']);
+            }
+        }
+        $this->WriteFileList($files);
+
+        return true;
+    }
+
+    private function SetObjectInfo($scriptID, $filename, $location, $name)
+    {
+        if ($this->IsValidID($scriptID) == false) {
+            $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
+            return false;
+        }
+        if (IPS_ObjectExists($scriptID) == false) {
+            $this->SendDebug(__FUNCTION__, 'no object with ID ' . $scriptID, 0);
+            return false;
+        }
+
+        $url = $this->ReadPropertyString('url');
+        if (preg_match('/^([^:]*):\/\/[^@]*@(.*)$/', $url, $p)) {
+            $url = $p[1] . '://' . $p[2];
+        }
+
+        $keywords = [
+            'Source',
+            'Source file',
+            'Target location',
+            'Designation',
+        ];
+
+        $new_lines = [];
+        $new_lines = [
+            $this->Translate('Source') . ': ' . $url,
+            $this->Translate('Source file') . ': ' . $filename,
+            $this->Translate('Target location') . ': ' . $location,
+            $this->Translate('Designation') . ': ' . $name,
+        ];
+        $new_lines[] = '';
+
+        $obj = IPS_GetObject($scriptID);
+        $info = $obj['ObjectInfo'];
+        $lines = explode(PHP_EOL, $info);
+        foreach ($lines as $line) {
+            foreach ($keywords as $keyword) {
+                if (preg_match('/^' . $this->Translate($keyword) . ': /', $line)) {
+                    $line = '';
+                    break;
+                }
+            }
+            if ($line != '') {
+                $new_lines[] = $line;
+            }
+        }
+
+        $info = implode(PHP_EOL, $new_lines);
+        if (IPS_SetInfo($scriptID, $info) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to set info "' . $info . '" to object with ID ' . $scriptID, 0);
+            return false;
+        }
+
+        return true;
+    }
+
+    private function ReadFileList()
+    {
+        $s = $this->GetMediaData('FileList');
+        @$files = json_decode((string) $s, true);
+        if ($files == false) {
+            $files = [];
+        }
+        return $files;
+    }
+
+    private function WriteFileList($files)
+    {
+        $s = json_encode($files, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($this->GetMediaData('FileList') != $s) {
+            $this->SetMediaData('FileList', $s, MEDIATYPE_DOCUMENT, '.txt', false);
+        }
     }
 }
-
-/*
-
-- curPath aktualisieren
-  -> 'git checkout ' . $branch . ' 2>&1'
-  -> 'git pull 2>&1'
-  -> 'git rev-parse HEAD 2>&1'
-  -> property 'commit' neu setzen
-  -> 'git config advice.detachedHead false 2>&1'
-  -> 'git checkout ' . $commit . ' 2>&1'
-
-- Scripte aktualisieren (-> wenn was geändert ist -> Frage)
-  -> Sicherheitsabfrage: wirklich ??
-  -> property 'files' neu ermitteln
-  -> wenn 'modified' oder so: weitere Sicherheitsabfrage mit Abbruch / überbügeln / überspringen
-  -> curPath aktualisieren
-  -> Änderungen in IPS übernehmen
-    -> alle Scripte, die jetzt ungleich sind, Text neu setzen
-    -> alle neuen Scripte anlegen (incl ObjIdent), ggfs Pfad anlegen
- */
