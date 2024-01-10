@@ -9,7 +9,7 @@ $autoload_content = <<<'EOL'
   
 declare(strict_types=1);
 
-$scriptID = xxxxx; // Script "Basisfunktionen"
+$scriptID = yyyyy; // Script "Basisfunktionen"
 
 if (IPS_ObjectExists($scriptID)) {
     require_once IPS_GetScriptFile($scriptID);

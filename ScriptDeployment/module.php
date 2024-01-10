@@ -308,7 +308,7 @@ class ScriptDeployment extends IPSModule
         $topVersion = isset($topDict['version']) ? $topDict['version'] : '';
         $topTimestamp = isset($topDict['tstamp']) ? date('d.m.Y H:i:s', (int) $topDict['tstamp']) : '';
 
-        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode(["id" => $FileList["id"], "filename" => $FileList["filename"], "name" => $FileList["name"], "location" => $FileList["location"]]));';
+        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode($FileList));';
         $formActions[] = [
             'type'    => 'RowLayout',
             'items'   => [
@@ -357,7 +357,7 @@ class ScriptDeployment extends IPSModule
             'columns'  => [
                 [
                     'name'     => 'filename',
-                    'width'    => '350px',
+                    'width'    => '250px',
                     'caption'  => 'Filename',
                     'onClick'  => $onClick_FileList,
                 ],
@@ -1052,8 +1052,11 @@ class ScriptDeployment extends IPSModule
         return true;
     }
 
-    private function readFile($fname, &$err)
+    private function readFile($fname, &$data, &$err)
     {
+        $data = '';
+        $err = '';
+
         if (file_exists($fname) == false) {
             $this->SendDebug(__FUNCTION__, 'missing file ' . $fname, 0);
             $err = 'missing file ' . $fname;
@@ -1077,15 +1080,13 @@ class ScriptDeployment extends IPSModule
             $err = 'unable to close file ' . $fname;
             return false;
         }
-        return $data;
+        return true;
     }
 
     private function readDictonary($path)
     {
-        $err = '';
         $fname = $path . DIRECTORY_SEPARATOR . self::$DICTIONARY_FILE;
-        $data = $this->readFile($fname, $err);
-        if ($data == false) {
+        if ($this->readFile($fname, $data, $err) == false) {
             return false;
         }
         @$dict = json_decode($data, true);
@@ -1099,9 +1100,10 @@ class ScriptDeployment extends IPSModule
     public function ReadAutoload(string &$err)
     {
         $fname = IPS_GetKernelDir() . 'scripts' . DIRECTORY_SEPARATOR . '__autoload.php';
-        $data = $this->readFile($fname, $err);
-        if ($err != '') {
-            echo $err . PHP_EOL;
+        if ($this->readFile($fname, $data, $err) == false) {
+            if ($err != '') {
+                echo $err . PHP_EOL;
+            }
         }
         return $data;
     }
@@ -1137,7 +1139,7 @@ class ScriptDeployment extends IPSModule
     public function WriteAutoload(string $data, bool $overwrite, string &$err)
     {
         $fname = IPS_GetKernelDir() . 'scripts' . DIRECTORY_SEPARATOR . '__autoload.php';
-        $ret = $$his->writeFile($fname, $data, $overwrite, $err);
+        $ret = $this->writeFile($fname, $data, $overwrite, $err);
         if ($err != '') {
             echo $err . PHP_EOL;
         }
@@ -1277,9 +1279,7 @@ class ScriptDeployment extends IPSModule
             }
             if ($newFile['id'] == 0) {
                 $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-                $curContent = $this->readFile($fname, $err);
-                $this->SendDebug(__FUNCTION__, 'fname=' . $fname . ', content=' . $curContent, 0);
-                if ($err != '') {
+                if ($this->readFile($fname, $curContent, $err) == false) {
                     if ($oldFile['lost']) {
                         continue;
                     }
@@ -1374,9 +1374,7 @@ class ScriptDeployment extends IPSModule
             }
 
             $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-            $err = '';
-            $curContent = $this->readFile($fname, $err);
-            if ($err != '') {
+            if ($this->readFile($fname, $curContent, $err) == false) {
                 continue;
             }
             $ipsContent = IPS_GetScriptContent($scriptID);
@@ -1397,10 +1395,10 @@ class ScriptDeployment extends IPSModule
         if ($this->execute('git diff > ' . $patchFile . ' 2>&1', $output) == false) {
             return false;
         }
-        $patchContent = $this->readFile($patchFile, $err);
-        if ($this->GetMediaData('DifferenceToCurrent') != $patchContent) {
-            $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        if ($this->readFile($patchFile, $patchContent, $err) == false) {
+            return false;
         }
+        $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
         if (unlink($patchFile) == false) {
             $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
             return false;
@@ -1408,10 +1406,10 @@ class ScriptDeployment extends IPSModule
         if ($this->execute('git diff -R ' . $branch . ' > ' . $patchFile . ' 2>&1', $output) == false) {
             return false;
         }
-        $patchContent = $this->readFile($patchFile, $err);
-        if ($this->GetMediaData('DifferenceToTop') != $patchContent) {
-            $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        if ($this->readFile($patchFile, $patchContent, $err) == false) {
+            return false;
         }
+        $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
         if (unlink($patchFile) == false) {
             $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
             return false;
@@ -1500,9 +1498,7 @@ class ScriptDeployment extends IPSModule
             $curContent = '';
             if ($file['missing'] || $file['modified']) {
                 $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $file['filename'];
-                $err = '';
-                $curContent = $this->readFile($fname, $err);
-                if ($err != '') {
+                if ($this->readFile($fname, $curContent, $err) == false) {
                     continue;
                 }
             }
@@ -1623,11 +1619,98 @@ class ScriptDeployment extends IPSModule
         return $files;
     }
 
+	private function cmp_fileList($a, $b)
+    {
+        if ($a['filename'] != $b['filename']) {
+            return (strcmp($a['filename'], $b['filename']) < 0) ? -1 : 1;
+        }
+        return ($a['id'] < $b['id']) ? -1 : 1;
+    }
+
     private function WriteFileList($files)
     {
+		usort($files, [__CLASS__, 'cmp_fileList']);
         $s = json_encode($files, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($this->GetMediaData('FileList') != $s) {
             $this->SetMediaData('FileList', $s, MEDIATYPE_DOCUMENT, '.txt', false);
         }
+    }
+
+    private function GetAllChildenIDs($objID, &$objIDs)
+    {
+        $cIDs = IPS_GetChildrenIDs($objID);
+        if ($cIDs != []) {
+            $objIDs = array_merge($objIDs, $cIDs);
+            foreach ($cIDs as $cID) {
+                $this->GetAllChildenIDs($cID, $objIDs);
+            }
+        }
+    }
+
+    public function BuildExport(array $objIDs, bool $with_childs)
+    {
+        $expPath = $this->getSubPath('export');
+        $filePath = $expPath . DIRECTORY_SEPARATOR . self::$FILE_DIR;
+
+        if (file_exists($expPath)) {
+            if ($this->rmDir($expPath) == false) {
+                return false;
+            }
+        }
+
+        if ($this->makeDir($expPath) == false) {
+            return false;
+        }
+        if ($this->makeDir($filePath) == false) {
+            return false;
+        }
+
+        $_objIDs = [];
+        foreach ($objIDs as $objID) {
+            $_objIDs[] = $objID;
+            if ($with_childs) {
+                $this->GetAllChildenIDs($objID, $_objIDs);
+            }
+        }
+
+        $files = [];
+        foreach ($_objIDs as $objID) {
+            $obj = IPS_GetObject($objID);
+            if ($obj['ObjectType'] != OBJECTTYPE_SCRIPT) {
+                continue;
+            }
+            $script = IPS_GetScript($objID);
+            if ($script['ScriptType'] != SCRIPTTYPE_PHP) {
+                continue;
+            }
+            $name = $obj['ObjectName'];
+            $location = IPS_GetLocation($objID);
+            $n = strrpos($location, '\\');
+            $location = substr($location, 0, $n);
+            $filename = str_replace(['.', ' ', DIRECTORY_SEPARATOR], '-', $name) . '.php';
+            $files[] = [
+                'filename' => $filename,
+                'location' => $location,
+                'name'     => $name,
+            ];
+            $fname = $filePath . DIRECTORY_SEPARATOR . $filename;
+            $content = IPS_GetScriptContent($objID);
+            if ($this->writeFile($fname, $content, true, $err) == false) {
+                return false;
+            }
+        }
+
+        $dict = [
+            'Version' => 0,
+            'tstamp'  => time(),
+            'files'   => $files,
+        ];
+
+        $fname = $expPath . DIRECTORY_SEPARATOR . self::$DICTIONARY_FILE;
+        $data = json_encode($dict, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($this->writeFile($fname, $data, true, $err) == false) {
+            return false;
+        }
+        return true;
     }
 }
