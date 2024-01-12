@@ -1315,36 +1315,40 @@ class ScriptDeployment extends IPSModule
             $newFile['name'] = $curFile['name'];
             $newFile['location'] = $curFile['location'];
             if ($fnd) {
-                $newFile['id'] = $oldFile['id'];
+                $scriptID = $oldFile['id'];
                 if ($this->IsValidID($newFile['id']) == false) {
-                    $newFile['id'] = 0;
+                    $scriptID = 0;
                 }
-            }
-            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-            $rd = $this->readFile($fname, $curContent, $err);
-
-            if ($newFile['id'] == 0) {
-                if ($rd == false) {
-                    if ($oldFile['lost']) {
-                        continue;
-                    }
-                    $newFile['lost'] = true;
-                } else {
-                    $newFile['missing'] = true;
-                }
+                $newFile['id'] = $scriptID;
             } else {
-                if ($rd == false) {
-                    $newFile['lost'] = true;
-                } elseif (in_array($curFile['filename'], $updateableFiles)) {
-                    $newFile['outdated'] = true;
+                $scriptID = $newFile['id'];
+            }
+
+            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
+            if ($this->readFile($fname, $curContent, $err) == false) {
+                if ($scriptID == 0 && $oldFile['lost']) {
+                    continue;
+                }
+                $newFile['lost'] = true;
+            } else {
+                if ($scriptID == 0) {
+                    $newFile['missing'] = true;
+                } else {
+                    $ipsContent = IPS_GetScriptContent($scriptID);
+                    if (strcmp($curContent, $ipsContent) != 0) {
+                        $newFile['modified'] = true;
+                    }
+                    if (in_array($curFile['filename'], $updateableFiles)) {
+                        $newFile['outdated'] = true;
+                    }
                 }
             }
+
             $newFile['requires'] = isset($curFile['requires']) ? $curFile['requires'] : [];
             $newFiles[] = $newFile;
         }
         foreach ($oldFiles as $oldFile) {
-            $scriptID = $oldFile['id'];
-            if ($scriptID == 0) {
+            if ($oldFile['id'] == 0) {
                 continue;
             }
 
@@ -1442,17 +1446,8 @@ class ScriptDeployment extends IPSModule
             if ($scriptID == 0) {
                 continue;
             }
-
-            // CHECK FILE => ScriptIsModified
-            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-            if ($this->readFile($fname, $curContent, $err) == false) {
-                continue;
-            }
-            $ipsContent = IPS_GetScriptContent($scriptID);
-            $r = strcmp($curContent, $ipsContent);
-            if ($r != 0) {
-                $newFile['modified'] = true;
-                $newFiles[$index] = $newFile;
+            if ($newFile['modified']) {
+                $ipsContent = IPS_GetScriptContent($scriptID);
                 $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
                 $ret = $this->writeFile($fname, $ipsContent, true, $err);
             }
