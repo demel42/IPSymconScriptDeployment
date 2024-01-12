@@ -32,9 +32,11 @@
 
 			"Time for the cyclical check": "Uhrzeit für die zyklische Prüfung",
 
+			"Function for mapping of keyword to value": "Funktion zur Umsetzung von Schlüsselwort zu Wert",
+
 			"__actions__": "",
 			"Perform check": "Prüfung durchführen",
-			"Search missing": "Fehlende Scripte suchen",
+			"Search missing": "Fehlende Skripte suchen",
 			"Perform adjustment": "Abgleich durchführen",
 
 			"__actions__": "FileList",
@@ -62,6 +64,7 @@
 			"local missing": "fehlt lokal",
 			"local modified": "lokal geändert",
 			"updateable": "aktualisierbar",
+			"keyword/value missing": "Schlüsselwort/Wert fehlt",
 
 			"__actions__": "ConnectScript",
 			"Connect script": "Skript verknüpfen",
@@ -81,7 +84,7 @@
 			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",
 
 			"__media__": "",
-			"FileList": "Liste der Scripte",
+			"FileList": "Liste der Skripte",
 			"DifferenceToCurrent": "Lokale Änderungen",
 			"DifferenceToTop": "Änderungen zur Repository",
 

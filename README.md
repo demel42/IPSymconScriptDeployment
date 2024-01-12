@@ -72,5 +72,5 @@ ScriptDeployment.State,
 
 ## 7. Versions-Historie
 
-- 0.9 @ 10.01.2024 18:15
+- 0.9 @ 12.01.2024 11:34
   - Initiale Version

@@ -51,6 +51,8 @@ class ScriptDeployment extends IPSModule
 
         $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
 
+        $this->RegisterPropertyString('mapping_function', 'MapLocalConstant');
+
         $this->RegisterAttributeString('commit', '');
         $this->RegisterAttributeString('branches', json_encode([]));
 
@@ -104,11 +106,24 @@ class ScriptDeployment extends IPSModule
         return '';
     }
 
+    private function SetReferences()
+    {
+        $this->MaintainReferences();
+
+        $files = $this->ReadFileList();
+        foreach ($files as $file) {
+            $scriptID = $file['id'];
+            if ($this->IsValidID($scriptID)) {
+                $this->RegisterReference($scriptID);
+            }
+        }
+    }
+
     public function ApplyChanges()
     {
         parent::ApplyChanges();
 
-        $this->MaintainReferences();
+        $this->SetReferences();
 
         if ($this->CheckPrerequisites() != false) {
             $this->MaintainTimer('CheckTimer', 0);
@@ -244,6 +259,13 @@ class ScriptDeployment extends IPSModule
             'caption' => 'Time for the cyclical check',
         ];
 
+        $formElements[] = [
+            'type'    => 'ValidationTextBox',
+            'name'    => 'mapping_function',
+            'width'   => '300px',
+            'caption' => 'Function for mapping of keyword to value',
+        ];
+
         return $formElements;
     }
 
@@ -275,6 +297,7 @@ class ScriptDeployment extends IPSModule
             'missing'  => 'local missing',
             'modified' => 'local modified',
             'outdated' => 'updateable',
+            'requires' => 'keyword/value missing',
         ];
 
         $topPath = $this->getSubPath(self::$TOP_DIR);
@@ -282,12 +305,12 @@ class ScriptDeployment extends IPSModule
         $curPath = $this->getSubPath(self::$CUR_DIR);
         $curDict = $this->readDictonary($curPath);
 
-        $curFiles = $this->ReadFileList();
+        $files = $this->ReadFileList();
         $values = [];
-        foreach ($curFiles as $curFile) {
+        foreach ($files as $file) {
             $state = [];
             foreach ($stateFields as $fld => $msg) {
-                if ($curFile[$fld]) {
+                if (isset($file[$fld]) && $file[$fld]) {
                     $state[] = $this->Translate($msg);
                 }
             }
@@ -295,10 +318,10 @@ class ScriptDeployment extends IPSModule
                 $state[] = 'ok';
             }
             $values[] = [
-                'filename'    => $curFile['filename'],
-                'name'        => $curFile['name'],
-                'location'    => $curFile['location'],
-                'id'          => $this->IsValidID($curFile['id']) ? ('#' . $curFile['id']) : '',
+                'filename'    => $file['filename'],
+                'name'        => $file['name'],
+                'location'    => $file['location'],
+                'id'          => $this->IsValidID($file['id']) ? ('#' . $file['id']) : '',
                 'state'       => implode(', ', $state),
             ];
         }
@@ -515,47 +538,54 @@ class ScriptDeployment extends IPSModule
     private function ConnectScript(int $scriptID, string $filename, string $location, bool $adjustLocation)
     {
         $this->SendDebug(__FUNCTION__, 'scriptID=' . $scriptID . ', filename=' . $filename . ', adjustLocation=' . $this->bool2str($adjustLocation) . ', location=' . $location, 0);
-        if ($this->IsValidID($scriptID) == false) {
-            $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
-            $msg = $this->TranslateFormat('ID "{$scriptID}" is invalid', ['{$scriptID}' => $scriptID]);
-            $this->PopupMessage($msg);
-            return false;
-        }
-        if (IPS_ObjectExists($scriptID) == false) {
-            $this->SendDebug(__FUNCTION__, 'no object with ID ' . $scriptID, 0);
-            $msg = $this->TranslateFormat('No object with ID "{$scriptID}"', ['{$scriptID}' => $scriptID]);
-            $this->PopupMessage($msg);
-            return false;
-        }
-        if (IPS_ScriptExists($scriptID) == false) {
-            $this->SendDebug(__FUNCTION__, 'object with ID ' . $scriptID . ' is not a script', 0);
-            $msg = $this->TranslateFormat('Object with ID "{$scriptID}" is not a script', ['{$scriptID}' => $scriptID]);
-            $this->PopupMessage($msg);
-            return false;
-        }
-
-        if ($adjustLocation) {
-            $parents = $this->Location2ParentChain($location, true);
-            if ($parents === false) {
-                $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
-                $msg = $this->TranslateFormat('Unable to resolve location "{$location}"', ['{$location}' => $location]);
+        if ($scriptID != 1) {
+            if ($this->IsValidID($scriptID) == false) {
+                $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
+                $msg = $this->TranslateFormat('ID "{$scriptID}" is invalid', ['{$scriptID}' => $scriptID]);
                 $this->PopupMessage($msg);
                 return false;
             }
-            $parID = $parents[0];
-            if (IPS_SetParent($scriptID, $parID) == false) {
-                $this->SendDebug(__FUNCTION__, 'unable to set parent ' . $parID . ' to script ' . $scriptID, 0);
-                $msg = $this->Translate('Unable to set parent');
+            if (IPS_ObjectExists($scriptID) == false) {
+                $this->SendDebug(__FUNCTION__, 'no object with ID ' . $scriptID, 0);
+                $msg = $this->TranslateFormat('No object with ID "{$scriptID}"', ['{$scriptID}' => $scriptID]);
                 $this->PopupMessage($msg);
                 return false;
+            }
+            if (IPS_ScriptExists($scriptID) == false) {
+                $this->SendDebug(__FUNCTION__, 'object with ID ' . $scriptID . ' is not a script', 0);
+                $msg = $this->TranslateFormat('Object with ID "{$scriptID}" is not a script', ['{$scriptID}' => $scriptID]);
+                $this->PopupMessage($msg);
+                return false;
+            }
+
+            if ($adjustLocation) {
+                $parents = $this->Location2ParentChain($location, true);
+                if ($parents === false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
+                    $msg = $this->TranslateFormat('Unable to resolve location "{$location}"', ['{$location}' => $location]);
+                    $this->PopupMessage($msg);
+                    return false;
+                }
+                $parID = $parents[0];
+                if (IPS_SetParent($scriptID, $parID) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set parent ' . $parID . ' to script ' . $scriptID, 0);
+                    $msg = $this->Translate('Unable to set parent');
+                    $this->PopupMessage($msg);
+                    return false;
+                }
             }
         }
 
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
             if ($file['filename'] == $filename) {
-                $file['id'] = $scriptID;
-                $file['missing'] = false;
+                if ($this->IsValidID($scriptID) == false) {
+                    $file['id'] = 0;
+                    $file['missing'] = true;
+                } else {
+                    $file['id'] = $scriptID;
+                    $file['missing'] = false;
+                }
                 $file['added'] = false;
                 if ($adjustLocation) {
                     $file['orphan'] = false;
@@ -816,6 +846,18 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
+        $state = $this->GetState4FileList();
+        $this->SetValue('State', $state);
+
+        $this->SetValue('Timestamp', time());
+
+        IPS_SemaphoreLeave($this->SemaphoreID);
+
+        $this->SetCheckTimer();
+    }
+
+    private function GetState4FileList()
+    {
         $files = $this->ReadFileList();
 
         $added = 0;
@@ -826,6 +868,7 @@ class ScriptDeployment extends IPSModule
         $orphan = 0;
         $outdated = 0;
         $removed = 0;
+        $requires = 0;
         foreach ($files as $file) {
             if ($file['added']) {
                 $added++;
@@ -851,9 +894,12 @@ class ScriptDeployment extends IPSModule
             if ($file['removed']) {
                 $removed++;
             }
+            if ($file['requires']) {
+                $requires++;
+            }
         }
 
-        if ($lost || $missing || $moved || $orphan) {
+        if ($lost || $missing || $moved || $orphan || $requires) {
             $state = self::$STATE_UNCLEAR;
         } elseif ($modified) {
             $state = self::$STATE_MODIFIED;
@@ -862,13 +908,8 @@ class ScriptDeployment extends IPSModule
         } else {
             $state = self::$STATE_SYNCED;
         }
-        $this->SetValue('State', $state);
 
-        $this->SetValue('Timestamp', time());
-
-        IPS_SemaphoreLeave($this->SemaphoreID);
-
-        $this->SetCheckTimer();
+        return $state;
     }
 
     private function LocalRequestAction($ident, $value)
@@ -1248,6 +1289,7 @@ class ScriptDeployment extends IPSModule
             'name'     => '',
             'location' => '',
             'id'       => 0,
+            'requires' => [],
             'removed'  => false,
             'added'    => false,
             'lost'     => false,
@@ -1256,6 +1298,7 @@ class ScriptDeployment extends IPSModule
             'missing'  => false,
             'modified' => false,
             'outdated' => false,
+            'requires' => false,
         ];
 
         $newFiles = [];
@@ -1277,9 +1320,11 @@ class ScriptDeployment extends IPSModule
                     $newFile['id'] = 0;
                 }
             }
+            $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
+            $rd = $this->readFile($fname, $curContent, $err);
+
             if ($newFile['id'] == 0) {
-                $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-                if ($this->readFile($fname, $curContent, $err) == false) {
+                if ($rd == false) {
                     if ($oldFile['lost']) {
                         continue;
                     }
@@ -1288,10 +1333,13 @@ class ScriptDeployment extends IPSModule
                     $newFile['missing'] = true;
                 }
             } else {
-                if (in_array($curFile['filename'], $updateableFiles)) {
+                if ($rd == false) {
+                    $newFile['lost'] = true;
+                } elseif (in_array($curFile['filename'], $updateableFiles)) {
                     $newFile['outdated'] = true;
                 }
             }
+            $newFile['requires'] = isset($curFile['requires']) ? $curFile['requires'] : [];
             $newFiles[] = $newFile;
         }
         foreach ($oldFiles as $oldFile) {
@@ -1313,6 +1361,7 @@ class ScriptDeployment extends IPSModule
                 $newFile['name'] = $oldFile['name'];
                 $newFile['location'] = $oldFile['location'];
                 $newFile['id'] = $oldFile['id'];
+                $newFile['requires'] = isset($oldFile['requires']) ? $oldFile['requires'] : [];
                 $newFile['removed'] = true;
                 $newFiles[] = $newFile;
             }
@@ -1330,6 +1379,7 @@ class ScriptDeployment extends IPSModule
                 $newFile['filename'] = $topFile['filename'];
                 $newFile['name'] = $topFile['name'];
                 $newFile['location'] = $topFile['location'];
+                $newFile['requires'] = isset($topFile['requires']) ? $topFile['requires'] : [];
                 $newFile['added'] = true;
                 $newFiles[] = $newFile;
             }
@@ -1361,6 +1411,26 @@ class ScriptDeployment extends IPSModule
                 continue;
             }
         }
+        $mapping_function = $this->ReadPropertyString('mapping_function');
+        if ($mapping_function != '') {
+            foreach ($newFiles as $index => $newFile) {
+                $scriptID = $newFile['id'];
+                if ($scriptID == 0) {
+                    continue;
+                }
+                $b = false;
+                $requires = $newFile['requires'];
+                foreach ($requires as $indent) {
+                    $r = $mapping_function($indent);
+                    if ($r === false) {
+                        $b = true;
+                        break;
+                    }
+                }
+                $newFile['requires'] = $b;
+                $newFiles[$index] = $newFile;
+            }
+        }
 
         $chgPath = $this->getSubPath(self::$CHG_DIR);
         if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
@@ -1373,6 +1443,7 @@ class ScriptDeployment extends IPSModule
                 continue;
             }
 
+            // CHECK FILE => ScriptIsModified
             $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
             if ($this->readFile($fname, $curContent, $err) == false) {
                 continue;
@@ -1432,10 +1503,10 @@ class ScriptDeployment extends IPSModule
     {
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
-            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
-            if ($file['missing'] == false || $file['id'] != 0) {
+            if ($file['id'] != 0) {
                 continue;
             }
+            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
 
             $location = $file['location'];
             $parents = $this->Location2ParentChain($location, false);
@@ -1460,6 +1531,11 @@ class ScriptDeployment extends IPSModule
 
     private function PerformAdjustment()
     {
+        if (IPS_SemaphoreEnter($this->SemaphoreID, self::$semaphoreTM) == false) {
+            $this->SendDebug(__FUNCTION__, 'repository is locked', 0);
+            return;
+        }
+
         $branch = $this->getBranch();
         $commit = $this->getCommit();
 
@@ -1467,18 +1543,28 @@ class ScriptDeployment extends IPSModule
         $curPath = $this->getSubPath(self::$CUR_DIR);
 
         if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
         if ($this->changeDir($curPath) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
         if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
         if ($this->execute('git pull 2>&1', $output) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
         if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
         $commit = $output[0];
@@ -1486,6 +1572,8 @@ class ScriptDeployment extends IPSModule
         $this->WriteAttributeString('commit', $commit);
         $this->execute('git config advice.detachedHead false', $output);
         if ($this->execute('git checkout ' . $commit . ' 2>&1', $output) == false) {
+            $this->SetValue('State', self::$STATE_FAULTY);
+            IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
         }
 
@@ -1549,6 +1637,11 @@ class ScriptDeployment extends IPSModule
             }
         }
         $this->WriteFileList($files);
+
+        $state = $this->GetState4FileList();
+        $this->SetValue('State', $state);
+
+        IPS_SemaphoreLeave($this->SemaphoreID);
 
         return true;
     }
@@ -1619,7 +1712,7 @@ class ScriptDeployment extends IPSModule
         return $files;
     }
 
-	private function cmp_fileList($a, $b)
+    private function cmp_fileList($a, $b)
     {
         if ($a['filename'] != $b['filename']) {
             return (strcmp($a['filename'], $b['filename']) < 0) ? -1 : 1;
@@ -1629,11 +1722,13 @@ class ScriptDeployment extends IPSModule
 
     private function WriteFileList($files)
     {
-		usort($files, [__CLASS__, 'cmp_fileList']);
+        usort($files, [__CLASS__, 'cmp_fileList']);
         $s = json_encode($files, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($this->GetMediaData('FileList') != $s) {
             $this->SetMediaData('FileList', $s, MEDIATYPE_DOCUMENT, '.txt', false);
         }
+
+        $this->SetReferences();
     }
 
     private function GetAllChildenIDs($objID, &$objIDs)
