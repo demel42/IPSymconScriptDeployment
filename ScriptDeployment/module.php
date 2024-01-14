@@ -278,6 +278,7 @@ class ScriptDeployment extends IPSModule
 
             $formActions[] = $this->GetInformationFormAction();
             $formActions[] = $this->GetReferencesFormAction();
+            $formActions[] = $this->GetModuleActivityFormAction();
 
             return $formActions;
         }
@@ -297,7 +298,7 @@ class ScriptDeployment extends IPSModule
             'missing'  => 'local missing',
             'modified' => 'local modified',
             'outdated' => 'updateable',
-            'requires' => 'keyword/value missing',
+            'unknown'  => 'keyword/value missing',
         ];
 
         $topPath = $this->getSubPath(self::$TOP_DIR);
@@ -517,20 +518,33 @@ class ScriptDeployment extends IPSModule
 
         $formActions[] = $this->GetInformationFormAction();
         $formActions[] = $this->GetReferencesFormAction();
+        $formActions[] = $this->GetModuleActivityFormAction();
 
         return $formActions;
     }
 
     private function DeleteItem(string $filename)
     {
+        $msgFileV = [];
+
         $newFiles = [];
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
+            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
+
             if ($file['filename'] != $filename) {
                 $newFiles[] = $file;
+            } else {
+                $msgV[] = 'delete item';
+                $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
             }
         }
+        foreach ($msgFileV as $msgFile) {
+            $this->SendDebug(__FUNCTION__, $this->printFile($msgFile['file']) . ' => ' . implode(', ', $msgFile['msgV']), 0);
+        }
+
         $this->WriteFileList($newFiles);
+
         $this->ReloadForm();
         return true;
     }
@@ -538,6 +552,7 @@ class ScriptDeployment extends IPSModule
     private function ConnectScript(int $scriptID, string $filename, string $location, bool $adjustLocation)
     {
         $this->SendDebug(__FUNCTION__, 'scriptID=' . $scriptID . ', filename=' . $filename . ', adjustLocation=' . $this->bool2str($adjustLocation) . ', location=' . $location, 0);
+
         if ($scriptID != 1) {
             if ($this->IsValidID($scriptID) == false) {
                 $this->SendDebug(__FUNCTION__, 'ID ' . $scriptID . ' is invalid', 0);
@@ -576,26 +591,43 @@ class ScriptDeployment extends IPSModule
             }
         }
 
+        $msgFileV = [];
+
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
-            if ($file['filename'] == $filename) {
-                if ($this->IsValidID($scriptID) == false) {
-                    $file['id'] = 0;
-                    $file['missing'] = true;
-                } else {
-                    $file['id'] = $scriptID;
-                    $file['missing'] = false;
-                }
-                $file['added'] = false;
+            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
+
+            if ($file['filename'] != $filename) {
+                continue;
+            }
+            if ($this->IsValidID($scriptID) == false) {
+                $file['id'] = 0;
+                $file['missing'] = true;
+                $msgV[] = 'disconnect';
+                $this->AddModuleActivity('manual disconnected "' . $name . '" from script ' . $scriptID, 0);
+            } else {
+                $file['id'] = $scriptID;
+                $file['missing'] = false;
+                $msgV[] = 'connect';
                 if ($adjustLocation) {
                     $file['orphan'] = false;
                     $file['moved'] = false;
+                    $msgV[] = 'adjust location';
                 }
-                $files[$index] = $file;
-                break;
+                $this->AddModuleActivity('manual connected "' . $name . '" to script ' . $scriptID, 0);
             }
+            $file['added'] = false;
+            $files[$index] = $file;
+
+            $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
         }
+
+        foreach ($msgFileV as $msgFile) {
+            $this->SendDebug(__FUNCTION__, $this->printFile($msgFile['file']) . ' => ' . implode(', ', $msgFile['msgV']), 0);
+        }
+
         $this->WriteFileList($files);
+
         $this->ReloadForm();
         return true;
     }
@@ -604,7 +636,6 @@ class ScriptDeployment extends IPSModule
     {
         $now = time();
         $update_time = json_decode($this->ReadPropertyString('update_time'), true);
-
         $fmt = sprintf('d.m.Y %02d:%02d:%02d', (int) $update_time['hour'], (int) $update_time['minute'], (int) $update_time['second']);
         $next_tstamp = strtotime(date($fmt, $now));
         if ($next_tstamp <= $now) {
@@ -840,13 +871,13 @@ class ScriptDeployment extends IPSModule
             $this->WriteAttributeString('commit', $curCommit);
         }
 
-        if ($this->CheckFileList() == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
+        $msgFileV = [];
+        $ret = $this->CheckFileList($msgFileV);
+        foreach ($msgFileV as $msgFile) {
+            $this->SendDebug(__FUNCTION__, $this->printFile($msgFile['file']) . ' => ' . implode(', ', $msgFile['msgV']), 0);
         }
 
-        $state = $this->GetState4FileList();
+        $state = $ret ? $this->GetState4FileList() : self::$STATE_FAULTY;
         $this->SetValue('State', $state);
 
         $this->SetValue('Timestamp', time());
@@ -854,6 +885,8 @@ class ScriptDeployment extends IPSModule
         IPS_SemaphoreLeave($this->SemaphoreID);
 
         $this->SetCheckTimer();
+
+        return $ret;
     }
 
     private function GetState4FileList()
@@ -868,7 +901,7 @@ class ScriptDeployment extends IPSModule
         $orphan = 0;
         $outdated = 0;
         $removed = 0;
-        $requires = 0;
+        $unknown = 0;
         foreach ($files as $file) {
             if ($file['added']) {
                 $added++;
@@ -894,12 +927,12 @@ class ScriptDeployment extends IPSModule
             if ($file['removed']) {
                 $removed++;
             }
-            if ($file['requires']) {
-                $requires++;
+            if ($file['unknown']) {
+                $unknown++;
             }
         }
 
-        if ($lost || $missing || $moved || $orphan || $requires) {
+        if ($lost || $missing || $moved || $orphan || $unknown) {
             $state = self::$STATE_UNCLEAR;
         } elseif ($modified) {
             $state = self::$STATE_MODIFIED;
@@ -1240,7 +1273,7 @@ class ScriptDeployment extends IPSModule
         return $commit;
     }
 
-    private function CheckFileList()
+    private function CheckFileList(&$msgFileV)
     {
         $branch = $this->getBranch();
         $commit = $this->getCommit();
@@ -1298,11 +1331,13 @@ class ScriptDeployment extends IPSModule
             'missing'  => false,
             'modified' => false,
             'outdated' => false,
-            'requires' => false,
+            'unknown'  => false,
         ];
 
         $newFiles = [];
         foreach ($curFiles as $curFile) {
+            $msgV = isset($msgFileV[$curFile['filename']]['msgV']) ? $msgFileV[$curFile['filename']]['msgV'] : [];
+
             $fnd = false;
             foreach ($oldFiles as $oldFile) {
                 if ($curFile['filename'] == $oldFile['filename']) {
@@ -1315,39 +1350,59 @@ class ScriptDeployment extends IPSModule
             $newFile['name'] = $curFile['name'];
             $newFile['location'] = $curFile['location'];
             if ($fnd) {
+                $msgV[] = 'found in prev';
                 $scriptID = $oldFile['id'];
-                if ($this->IsValidID($newFile['id']) == false) {
+                if ($this->IsValidID($scriptID) == false) {
+                    $scriptID = 0;
+                } elseif (IPS_ObjectExists($scriptID) == false) {
+                    $this->SendDebug(__FUNCTION__, 'script ' . $scriptID . ' disappeared', 0);
+                    $this->AddModuleActivity('script ' . $scriptID . ' "' . $newFile['filename'] . '" disappeared', 0);
                     $scriptID = 0;
                 }
                 $newFile['id'] = $scriptID;
             } else {
-                $scriptID = $newFile['id'];
+                // $scriptID = $curFile['id'];
+                $msgV[] = 'new file';
             }
 
             $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
             if ($this->readFile($fname, $curContent, $err) == false) {
                 if ($scriptID == 0 && $oldFile['lost']) {
+                    $msgV = 'not longer in repository';
+                    $msgFileV[$curFile['filename']] = ['file' => $curFile, 'msgV' => $msgV];
+                    // $this->SendDebug(__FUNCTION__, '1:'.print_r($msgFileV[$curFile['filename']], true),0);
                     continue;
                 }
                 $newFile['lost'] = true;
+                $msgV[] = 'not in repository';
             } else {
                 if ($scriptID == 0) {
                     $newFile['missing'] = true;
+                    $msgV[] = 'script is missing';
                 } else {
                     $ipsContent = IPS_GetScriptContent($scriptID);
                     if (strcmp($curContent, $ipsContent) != 0) {
                         $newFile['modified'] = true;
+                        $msgV[] = 'script-content is changed';
+                    } else {
+                        $msgV[] = 'script unchanged';
                     }
                     if (in_array($curFile['filename'], $updateableFiles)) {
                         $newFile['outdated'] = true;
+                        $msgV[] = 'script is outdateable';
                     }
                 }
             }
 
             $newFile['requires'] = isset($curFile['requires']) ? $curFile['requires'] : [];
             $newFiles[] = $newFile;
+
+            $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+            // $this->SendDebug(__FUNCTION__, '2:'.print_r($msgFileV[$newFile['filename']], true),0);
         }
         foreach ($oldFiles as $oldFile) {
+            $msgV = isset($msgFileV[$oldFile['filename']]['msgV']) ? $msgFileV[$oldFile['filename']]['msgV'] : [];
+
             if ($oldFile['id'] == 0) {
                 continue;
             }
@@ -1359,18 +1414,26 @@ class ScriptDeployment extends IPSModule
                     break;
                 }
             }
-            if ($fnd == false) {
-                $newFile = $dflt;
-                $newFile['filename'] = $oldFile['filename'];
-                $newFile['name'] = $oldFile['name'];
-                $newFile['location'] = $oldFile['location'];
-                $newFile['id'] = $oldFile['id'];
-                $newFile['requires'] = isset($oldFile['requires']) ? $oldFile['requires'] : [];
-                $newFile['removed'] = true;
-                $newFiles[] = $newFile;
+            if ($fnd) {
+                continue;
             }
+
+            $newFile = $dflt;
+            $newFile['filename'] = $oldFile['filename'];
+            $newFile['name'] = $oldFile['name'];
+            $newFile['location'] = $oldFile['location'];
+            $newFile['id'] = $oldFile['id'];
+            $newFile['requires'] = isset($oldFile['requires']) ? $oldFile['requires'] : [];
+            $newFile['removed'] = true;
+            $newFiles[] = $newFile;
+
+            $msgV[] = 'removed in repository';
+            $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+            // $this->SendDebug(__FUNCTION__, '3:'.print_r($msgFileV[$newFile['filename']], true),0);
         }
         foreach ($topFiles as $topFile) {
+            $msgV = isset($msgFileV[$topFile['filename']]['msgV']) ? $msgFileV[$topFile['filename']]['msgV'] : [];
+
             $fnd = false;
             foreach ($newFiles as $newFile) {
                 if ($topFile['filename'] == $newFile['filename']) {
@@ -1378,17 +1441,25 @@ class ScriptDeployment extends IPSModule
                     break;
                 }
             }
-            if ($fnd == false) {
-                $newFile = $dflt;
-                $newFile['filename'] = $topFile['filename'];
-                $newFile['name'] = $topFile['name'];
-                $newFile['location'] = $topFile['location'];
-                $newFile['requires'] = isset($topFile['requires']) ? $topFile['requires'] : [];
-                $newFile['added'] = true;
-                $newFiles[] = $newFile;
+            if ($fnd) {
+                continue;
             }
+
+            $newFile = $dflt;
+            $newFile['filename'] = $topFile['filename'];
+            $newFile['name'] = $topFile['name'];
+            $newFile['location'] = $topFile['location'];
+            $newFile['requires'] = isset($topFile['requires']) ? $topFile['requires'] : [];
+            $newFile['added'] = true;
+            $newFiles[] = $newFile;
+
+            $msgV[] = 'added to repository';
+            $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+            // $this->SendDebug(__FUNCTION__, '4:'.print_r($msgFileV[$newFile['filename']], true),0);
         }
         foreach ($newFiles as $index => $newFile) {
+            $msgV = isset($msgFileV[$newFile['filename']]['msgV']) ? $msgFileV[$newFile['filename']]['msgV'] : [];
+
             $scriptID = $newFile['id'];
             if ($scriptID == 0) {
                 continue;
@@ -1398,6 +1469,10 @@ class ScriptDeployment extends IPSModule
                 $newFile['id'] = 0;
                 $newFile['missing'] = true;
                 $newFiles[$index] = $newFile;
+
+                $msgV[] = 'script is missing';
+                $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+                // $this->SendDebug(__FUNCTION__, '5:'.print_r($msgFileV[$newFile['filename']], true),0);
                 continue;
             }
 
@@ -1407,34 +1482,47 @@ class ScriptDeployment extends IPSModule
             if (count($parents) == 0) {
                 $newFile['orphan'] = true;
                 $newFiles[$index] = $newFile;
-                continue;
-            }
-            if ($parents[0] != $parID) {
+                $msgV[] = 'script has no parent';
+            } elseif ($parents[0] != $parID) {
                 $newFile['moved'] = true;
                 $newFiles[$index] = $newFile;
-                continue;
+                $msgV[] = 'script is moved to other location';
             }
+
+            $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+            // $this->SendDebug(__FUNCTION__, '6:'.print_r($msgFileV[$newFile['filename']], true),0);
         }
         $mapping_function = $this->ReadPropertyString('mapping_function');
         if ($mapping_function != '') {
             foreach ($newFiles as $index => $newFile) {
+                $msgV = isset($msgFileV[$newFile['filename']]['msgV']) ? $msgFileV[$newFile['filename']]['msgV'] : [];
+
                 $scriptID = $newFile['id'];
                 if ($scriptID == 0) {
                     continue;
                 }
-                $b = false;
+                $unknown_keywords = [];
                 $requires = $newFile['requires'];
                 foreach ($requires as $indent) {
                     $r = $mapping_function($indent);
                     if ($r === false) {
-                        $b = true;
+                        $unknown_keywords[] = $indent;
                         break;
                     }
                 }
-                $newFile['requires'] = $b;
+                if ($unknown_keywords != []) {
+                    $msgV[] = 'unknown keyword(s)=[' . implode(',', $unknown_keywords) . ']';
+                } else {
+                    $newFile['unknown'] = false;
+                }
                 $newFiles[$index] = $newFile;
+
+                $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
+                // $this->SendDebug(__FUNCTION__, '7:'.print_r($msgFileV[$newFile['filename']], true),0);
             }
         }
+
+        $this->WriteFileList($newFiles);
 
         $chgPath = $this->getSubPath(self::$CHG_DIR);
         if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
@@ -1449,7 +1537,9 @@ class ScriptDeployment extends IPSModule
             if ($newFile['modified']) {
                 $ipsContent = IPS_GetScriptContent($scriptID);
                 $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
-                $ret = $this->writeFile($fname, $ipsContent, true, $err);
+                if ($this->writeFile($fname, $ipsContent, true, $err) == false) {
+                    return false;
+                }
             }
         }
 
@@ -1488,25 +1578,26 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $this->SendDebug(__FUNCTION__, 'newFiles=' . print_r($newFiles, true), 0);
-        $this->WriteFileList($newFiles);
-
         return true;
     }
 
     private function SearchMissing()
     {
+        $msgFileV = [];
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
             if ($file['id'] != 0) {
                 continue;
             }
-            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
+
+            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
 
             $location = $file['location'];
             $parents = $this->Location2ParentChain($location, false);
             if (count($parents) == 0) {
                 $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
+                $msgV[] = 'unable to resolve location "' . $location . '"';
+                $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
                 continue;
             }
             $parID = $parents[0];
@@ -1517,9 +1608,20 @@ class ScriptDeployment extends IPSModule
                 $file['id'] = $scriptID;
                 $file['missing'] = false;
                 $files[$index] = $file;
+                $msgV[] = 'found script by name';
+                $this->AddModuleActivity('found existing script ' . $scriptID . ' by name "' . $name . '"', 0);
+            } else {
+                $msgV[] = 'script with name "' . $name . '" not found';
             }
+
+            $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
         }
+
         $this->WriteFileList($files);
+
+        foreach ($msgFileV as $msgFile) {
+            $this->SendDebug(__FUNCTION__, $this->printFile($msgFile['file']) . ' => ' . implode(', ', $msgFile['msgV']), 0);
+        }
 
         return true;
     }
@@ -1572,40 +1674,63 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $this->CheckFileList();
+        $msgFileV = [];
+        $this->CheckFileList($msgFileV);
 
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
-            $this->SendDebug(__FUNCTION__, 'file=' . print_r($file, true), 0);
+            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
 
             $curContent = '';
             if ($file['missing'] || $file['modified']) {
                 $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $file['filename'];
                 if ($this->readFile($fname, $curContent, $err) == false) {
+                    $msgV[] = 'can\'t read file from repository';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('unable to read file "' . $file['filename'] . '"', 0);
                     continue;
                 }
             }
 
             if ($file['missing']) {
                 $scriptID = IPS_CreateScript(SCRIPTTYPE_PHP);
+                if ($scriptID == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to create script', 0);
+                    $msgV[] = 'unable to set script content';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (create)', 0);
+                    continue;
+                }
                 if (IPS_SetScriptContent($scriptID, $curContent) == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to set content to script ' . $scriptID, 0);
+                    $msgV[] = 'unable to set script content';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (content)', 0);
                     continue;
                 }
                 $name = $file['name'];
                 if (IPS_SetName($scriptID, $name) == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to set name "' . $name . '" to script ' . $scriptID, 0);
+                    $msgV[] = 'unable to set script name "' . $name . '"';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (name)', 0);
                     continue;
                 }
                 $location = $file['location'];
                 $parents = $this->Location2ParentChain($location, true);
                 if ($parents === false) {
                     $this->SendDebug(__FUNCTION__, 'unable to resolve location "' . $location . '"', 0);
+                    $msgV[] = 'unable to resolve location "' . $location . '"';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (location)', 0);
                     continue;
                 }
                 $parID = $parents[0];
                 if (IPS_SetParent($scriptID, $parID) == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to set parent ' . $parID . ' to script ' . $scriptID, 0);
+                    $msgV[] = 'unable to set parent ' . $parID;
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (parent)', 0);
                     continue;
                 }
 
@@ -1613,24 +1738,42 @@ class ScriptDeployment extends IPSModule
                 $file['missing'] = false;
                 $files[$index] = $file;
                 $this->SendDebug(__FUNCTION__, 'create script ' . $scriptID . ', file=' . print_r($file, true), 0);
+                $msgV[] = 'create script';
+                $msg = 'create script ' . $scriptID . ' from "' . $file['filename'] . '"';
+                if ($parID) {
+                    $msg .= ' with parent ' . $parID;
+                }
+                $this->AddModuleActivity($msg, 0);
             }
 
             if ($file['modified']) {
                 $scriptID = $file['id'];
                 if (IPS_SetScriptContent($scriptID, $curContent) == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to set content to script ' . $scriptID, 0);
+                    $msgV[] = 'unable to set script content';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (content)', 0);
                     continue;
                 }
                 $file['modified'] = false;
                 $files[$index] = $file;
                 $this->SendDebug(__FUNCTION__, 'update script ' . $scriptID . ', file=' . print_r($file, true), 0);
+                $msgV[] = 'update script';
+                $this->AddModuleActivity('update script ' . $scriptID . ' from "' . $file['filename'] . '"', 0);
             }
 
             $scriptID = $file['id'];
             if ($scriptID != 0) {
                 $this->SetObjectInfo($scriptID, $file['filename'], $file['location'], $file['name']);
             }
+
+            $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
         }
+
+        foreach ($msgFileV as $msgFile) {
+            $this->SendDebug(__FUNCTION__, $this->printFile($msgFile['file']) . ' => ' . implode(', ', $msgFile['msgV']), 0);
+        }
+
         $this->WriteFileList($files);
 
         $state = $this->GetState4FileList();
@@ -1777,7 +1920,7 @@ class ScriptDeployment extends IPSModule
             $location = IPS_GetLocation($objID);
             $n = strrpos($location, '\\');
             $location = substr($location, 0, $n);
-            $filename = str_replace(['.', ' ', DIRECTORY_SEPARATOR], '-', $name) . '.php';
+            $filename = str_replace(['.', ' ', DIRECTORY_SEPARATOR, ':'], '-', $name) . '.php';
             $files[] = [
                 'filename' => $filename,
                 'location' => $location,
@@ -1802,5 +1945,30 @@ class ScriptDeployment extends IPSModule
             return false;
         }
         return true;
+    }
+
+    private function printFile($file)
+    {
+        $stateFields = [
+            'removed',
+            'added',
+            'lost',
+            'moved',
+            'orphan',
+            'missing',
+            'modified',
+            'outdated',
+            'unknown',
+        ];
+
+        $state = [];
+        foreach ($stateFields as $fld) {
+            if (isset($file[$fld]) && $file[$fld]) {
+                $state[] = $fld;
+            }
+        }
+
+        $s = 'filename=' . $file['filename'] . ', scriptID=' . $file['id'] . ', states=' . implode(',', $state);
+        return $s;
     }
 }
