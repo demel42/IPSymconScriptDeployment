@@ -51,7 +51,7 @@ class ScriptDeployment extends IPSModule
 
         $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
 
-        $this->RegisterPropertyString('mapping_function', 'MapLocalConstant');
+        $this->RegisterPropertyString('mapping_function', 'GetLocalConfig');
 
         $this->RegisterAttributeString('commit', '');
         $this->RegisterAttributeString('branches', json_encode([]));
@@ -1361,7 +1361,7 @@ class ScriptDeployment extends IPSModule
                 }
                 $newFile['id'] = $scriptID;
             } else {
-                // $scriptID = $curFile['id'];
+                $scriptID = 0;
                 $msgV[] = 'new file';
             }
 
@@ -1921,6 +1921,7 @@ class ScriptDeployment extends IPSModule
             $n = strrpos($location, '\\');
             $location = substr($location, 0, $n);
             $filename = str_replace(['.', ' ', DIRECTORY_SEPARATOR, ':'], '-', $name) . '.php';
+            $filename = strtr($filename, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'Ä' => 'Ae', 'Ö' => 'Oe', 'Ü' => 'Ue', 'ß' => 'ss']);
             $files[] = [
                 'filename' => $filename,
                 'location' => $location,
