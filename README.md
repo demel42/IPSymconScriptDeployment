@@ -16,10 +16,12 @@
 
 ## 1. Funktionsumfang
 
+Bereitstellung/Verteilung von Skripten für Symcon-Systeme mit Hilfe eines GIT-Repository; wenn man mehrere Repositories hat, wird fürjedes eine eigenen Instanz benötigt.
+
 ## 2. Voraussetzungen
 
 - IP-Symcon ab Version 6.0
-- ein git-Repository mit den zu verteilenden Scripten
+- ein oder mehrere git-Repository mit den zu verteilenden Scripten
 
 ## 3. Installation
 
@@ -31,8 +33,6 @@ Alternativ kann das Modul über [Module Control](https://www.symcon.de/service/d
 ### b. Einrichtung in IPS
 
 ## 4. Funktionsreferenz
-
-
 
 ## 5. Konfiguration
 
