@@ -17,7 +17,15 @@ if (IPS_ObjectExists($scriptID)) {
 
 EOL;
 
-ScriptDeployment_WriteAutoload($instID, $autoload_content, true);
+$err = '';
+ScriptDeployment_WriteAutoload($instID, $autoload_content, true, $err);
+if ($err != '') {
+    echo 'ScriptDeployment_WriteAutoload() failed: ' . $err;
+}
 
-$content = ScriptDeployment_ReadAutoload($instID);
+$content = ScriptDeployment_ReadAutoload($instID, $err);
+if ($err != '') {
+    echo 'ScriptDeployment_ReadAutoload() failed: ' . $err;
+}
+
 echo '==== current content of "__autoload.php" ==========' . PHP_EOL . $content . '===' . PHP_EOL;
