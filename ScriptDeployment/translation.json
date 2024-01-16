@@ -48,6 +48,7 @@
 			"Filename": "Dateiname",
 			"Location": "Ort",
 			"Name": "Name",
+			"Path": "Pfad",
 			"Source file": "Ursprungsdatei",
 			"Source": "Quelle",
 			"State": "Status",

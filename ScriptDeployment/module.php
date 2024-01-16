@@ -269,6 +269,49 @@ class ScriptDeployment extends IPSModule
         return $formElements;
     }
 
+    private function build_state($file)
+    {
+        $stateFields = [
+            'removed'  => 'deleted in repository',
+            'added'    => 'added to repository',
+            'lost'     => 'missing in repository',
+            'moved'    => 'local moved',
+            'orphan'   => 'parent missing',
+            'missing'  => 'local missing',
+            'modified' => 'local modified',
+            'outdated' => 'updateable',
+            'unknown'  => 'keyword/value missing',
+        ];
+        $state = [];
+        foreach ($stateFields as $fld => $msg) {
+            if (isset($file[$fld]) && $file[$fld]) {
+                $state[] = $this->Translate($msg);
+            }
+        }
+        if ($state == []) {
+            $state[] = 'ok';
+        }
+
+        return implode(', ', $state);
+    }
+
+    private function build_values_FileList()
+    {
+        $files = $this->ReadFileList();
+        $values = [];
+        foreach ($files as $file) {
+            $values[] = [
+                'filename'    => $file['filename'],
+                'name'        => $file['name'],
+                'location'    => $file['location'],
+                'path'        => $file['location'] . '\\' . $file['name'],
+                'id'          => $this->IsValidID($file['id']) ? ('#' . $file['id']) : '',
+                'state'       => $this->build_state($file),
+            ];
+        }
+        return $values;
+    }
+
     private function GetFormActions()
     {
         $formActions = [];
@@ -289,43 +332,13 @@ class ScriptDeployment extends IPSModule
             'onClick' => 'IPS_RequestAction($id, "PerformCheck", ""); IPS_RequestAction($id, "ReloadForm", "");',
         ];
 
-        $stateFields = [
-            'removed'  => 'deleted in repository',
-            'added'    => 'added to repository',
-            'lost'     => 'missing in repository',
-            'moved'    => 'local moved',
-            'orphan'   => 'parent missing',
-            'missing'  => 'local missing',
-            'modified' => 'local modified',
-            'outdated' => 'updateable',
-            'unknown'  => 'keyword/value missing',
-        ];
-
         $topPath = $this->getSubPath(self::$TOP_DIR);
         $topDict = $this->readDictonary($topPath);
         $curPath = $this->getSubPath(self::$CUR_DIR);
         $curDict = $this->readDictonary($curPath);
 
-        $files = $this->ReadFileList();
-        $values = [];
-        foreach ($files as $file) {
-            $state = [];
-            foreach ($stateFields as $fld => $msg) {
-                if (isset($file[$fld]) && $file[$fld]) {
-                    $state[] = $this->Translate($msg);
-                }
-            }
-            if ($state == []) {
-                $state[] = 'ok';
-            }
-            $values[] = [
-                'filename'    => $file['filename'],
-                'name'        => $file['name'],
-                'location'    => $file['location'],
-                'id'          => $this->IsValidID($file['id']) ? ('#' . $file['id']) : '',
-                'state'       => implode(', ', $state),
-            ];
-        }
+        $values = $this->build_values_FileList();
+        $n_values = count($values) > 0 ? min(count($values), 20) : 1;
 
         $curVersion = isset($curDict['version']) ? $curDict['version'] : '';
         $curTimestamp = isset($curDict['tstamp']) ? date('d.m.Y H:i:s', (int) $curDict['tstamp']) : '';
@@ -380,27 +393,21 @@ class ScriptDeployment extends IPSModule
             'name'     => 'FileList',
             'columns'  => [
                 [
-                    'name'     => 'filename',
-                    'width'    => '250px',
-                    'caption'  => 'Filename',
-                    'onClick'  => $onClick_FileList,
-                ],
-                [
-                    'name'     => 'name',
-                    'width'    => '350px',
-                    'caption'  => 'Name',
-                    'onClick'  => $onClick_FileList,
-                ],
-                [
-                    'name'     => 'location',
+                    'name'     => 'path',
                     'width'    => 'auto',
-                    'caption'  => 'Target location',
+                    'caption'  => 'Path',
                     'onClick'  => $onClick_FileList,
                 ],
                 [
                     'name'     => 'state',
                     'width'    => '250px',
                     'caption'  => 'State',
+                    'onClick'  => $onClick_FileList,
+                ],
+                [
+                    'name'     => 'filename',
+                    'width'    => '300px',
+                    'caption'  => 'Filename',
                     'onClick'  => $onClick_FileList,
                 ],
                 [
@@ -413,7 +420,7 @@ class ScriptDeployment extends IPSModule
             'add'      => false,
             'delete'   => false,
             'values'   => $values,
-            'rowCount' => count($values) > 0 ? count($values) : 1,
+            'rowCount' => $n_values,
             'caption'  => 'Deployed scripts',
         ];
         $formActions[] = [
@@ -497,12 +504,12 @@ class ScriptDeployment extends IPSModule
                 [
                     'type'    => 'Button',
                     'caption' => 'Search missing',
-                    'onClick' => 'IPS_RequestAction($id, "SearchMissing", ""); IPS_RequestAction($id, "ReloadForm", "");',
+                    'onClick' => 'IPS_RequestAction($id, "SearchMissing", ""); IPS_RequestAction($id, "Refresh_FileList", "");',
                 ],
                 [
                     'type'    => 'Button',
                     'caption' => 'Perform adjustment',
-                    'onClick' => 'IPS_RequestAction($id, "PerformAdjustment", ""); IPS_RequestAction($id, "ReloadForm", "");',
+                    'onClick' => 'IPS_RequestAction($id, "PerformAdjustment", ""); IPS_RequestAction($id, "Refresh_FileList", "");',
                 ],
             ],
         ];
@@ -545,7 +552,7 @@ class ScriptDeployment extends IPSModule
 
         $this->WriteFileList($newFiles);
 
-        $this->ReloadForm();
+        IPS_RequestAction($this->InstanceID, 'Refresh_FileList', '');
         return true;
     }
 
@@ -628,7 +635,7 @@ class ScriptDeployment extends IPSModule
 
         $this->WriteFileList($files);
 
-        $this->ReloadForm();
+        IPS_RequestAction($this->InstanceID, 'Refresh_FileList', '');
         return true;
     }
 
@@ -976,6 +983,14 @@ class ScriptDeployment extends IPSModule
             case 'ReloadForm':
                 $this->ReloadForm();
                 break;
+            case 'Refresh_FileList':
+                $values = $this->build_values_FileList();
+                $n_values = count($values) > 0 ? min(count($values), 20) : 1;
+
+                $this->UpdateFormField('FileList', 'values', json_encode($values));
+                $this->UpdateFormField('FileList', 'rowCount', $n_values);
+
+                break;
             case 'UpdateFormField_FileList':
                 $jparams = json_decode($value, true);
                 $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
@@ -994,7 +1009,6 @@ class ScriptDeployment extends IPSModule
                 $this->UpdateFormField('connectScript_ScriptID', 'value', $id);
 
                 $this->UpdateFormField('DeleteItem', 'visible', $id ? true : false);
-
                 break;
             default:
                 $r = false;
@@ -1852,9 +1866,16 @@ class ScriptDeployment extends IPSModule
 
     private function cmp_fileList($a, $b)
     {
+        $a_fullname = $a['location'] . '\\' . $a['name'];
+        $b_fullname = $b['location'] . '\\' . $b['name'];
+        if ($a_fullname != $b_fullname) {
+            return (strcmp($a_fullname, $b_fullname) < 0) ? -1 : 1;
+        }
+
         if ($a['filename'] != $b['filename']) {
             return (strcmp($a['filename'], $b['filename']) < 0) ? -1 : 1;
         }
+
         return ($a['id'] < $b['id']) ? -1 : 1;
     }
 
