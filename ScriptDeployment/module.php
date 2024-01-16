@@ -1525,6 +1525,7 @@ class ScriptDeployment extends IPSModule
                     }
                 }
                 if ($unknown_keywords != []) {
+                    $newFile['unknown'] = true;
                     $msgV[] = 'unknown keyword(s)=[' . implode(',', $unknown_keywords) . ']';
                 } else {
                     $newFile['unknown'] = false;
