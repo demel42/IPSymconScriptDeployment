@@ -51,11 +51,16 @@
 			"Path": "Pfad",
 			"Source file": "Ursprungsdatei",
 			"Source": "Quelle",
-			"State": "Status",
+			"Total state": "Gesamtzustand",
 			"Target location": "Zielort",
 			"ObjectID": "ObjektID",
 			"Deployed scripts": "Bereitgestelllte Skripte",
 			"Open script": "Skript öffnen",
+			"Delete item": "Eintrag löschen",
+			"Show item": "Eintrag anzeigen",
+
+			"Title": "Bezeichnung",
+			"Value": "Wert",
 
 			"deleted in repository": "im Repository gelöscht",
 			"added to repository": "zum Repository hinzugefügt",
@@ -63,6 +68,7 @@
 			"local moved": "lokal verschoben",
 			"parent missing": "übergeordnetes Element fehlt",
 			"local missing": "fehlt lokal",
+			"local renamed": "lokal umbenannt",
 			"local modified": "lokal geändert",
 			"updateable": "aktualisierbar",
 			"keyword/value missing": "Schlüsselwort/Wert fehlt",
@@ -78,7 +84,6 @@
 			"Object with ID \"{$scriptID}\" is not a script": "Objekt mit der ID \"{$scriptID}\" ist kein Skript",
 			"Unable to resolve location \"{$location}\"": "Ort \"{$location}\" kann nicht aufgelöst werden",
 			"Unable to set parent": "Übergeordnetes Element kann nicht gesetzt werden",
-			"Delete item": "Eintrag löschen",
 
 			"__variables__": "",
 			"State": "Zustand",

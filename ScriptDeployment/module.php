@@ -269,44 +269,93 @@ class ScriptDeployment extends IPSModule
         return $formElements;
     }
 
-    private function build_state($file)
+    private function state_names()
     {
-        $stateFields = [
-            'removed'  => 'deleted in repository',
+        $names = [
+            'added',
+            'removed',
+            'lost',
+            'moved',
+            'orphan',
+            'missing',
+            'modified',
+            'renamed',
+            'outdated',
+            'unknown',
+        ];
+
+        return $names;
+    }
+
+    private function state2text($state)
+    {
+        $map = [
             'added'    => 'added to repository',
+            'removed'  => 'deleted in repository',
             'lost'     => 'missing in repository',
             'moved'    => 'local moved',
             'orphan'   => 'parent missing',
             'missing'  => 'local missing',
             'modified' => 'local modified',
+            'renamed'  => 'local renamed',
             'outdated' => 'updateable',
             'unknown'  => 'keyword/value missing',
         ];
+
+        if (isset($map[$state])) {
+            return $this->Translate($map[$state]);
+        }
+        return $state;
+    }
+
+    private function build_state($file)
+    {
         $state = [];
-        foreach ($stateFields as $fld => $msg) {
-            if (isset($file[$fld]) && $file[$fld]) {
-                $state[] = $this->Translate($msg);
+        foreach ($this->state_names() as $name) {
+            if (isset($file[$name]) && $file[$name] !== false) {
+                $state[] = $this->state2text($name);
             }
         }
         if ($state == []) {
             $state[] = 'ok';
         }
-
         return implode(', ', $state);
+    }
+
+    private function build_states($file)
+    {
+        $states = [];
+        foreach ($this->state_names() as $name) {
+            if (isset($file[$name]) && $file[$name] !== false) {
+                $states[] = [
+                    'name'  => $this->state2text($name),
+                    'info'  => ($file[$name] !== true ? $file[$name] : ''),
+                ];
+            }
+        }
+        if ($states == []) {
+            $states[] = [
+                'name'  => 'ok',
+                'info'  => '',
+            ];
+        }
+        return $states;
     }
 
     private function build_values_FileList()
     {
         $files = $this->ReadFileList();
+
         $values = [];
         foreach ($files as $file) {
             $values[] = [
-                'filename'    => $file['filename'],
-                'name'        => $file['name'],
-                'location'    => $file['location'],
-                'path'        => $file['location'] . '\\' . $file['name'],
-                'id'          => $this->IsValidID($file['id']) ? ('#' . $file['id']) : '',
-                'state'       => $this->build_state($file),
+                'filename' => $file['filename'],
+                'name'     => $file['name'],
+                'location' => $file['location'],
+                'path'     => $file['location'] . '\\' . $file['name'],
+                'id'       => $this->IsValidID($file['id']) ? ('#' . $file['id']) : '',
+                'state'    => $this->build_state($file),
+                'states'   => $this->build_states($file),
             ];
         }
         return $values;
@@ -345,49 +394,58 @@ class ScriptDeployment extends IPSModule
         $topVersion = isset($topDict['version']) ? $topDict['version'] : '';
         $topTimestamp = isset($topDict['tstamp']) ? date('d.m.Y H:i:s', (int) $topDict['tstamp']) : '';
 
-        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode($FileList));';
+        $files = $this->ReadFileList();
+        $counts = $this->count_state($files);
+        $cs = [];
+        foreach ($this->state_names() as $name) {
+            if (isset($counts[$name]) && $counts[$name] > 0) {
+                $cs[] = $this->state2text($name) . '=' . $counts[$name];
+            }
+        }
+        $s = count($cs) ? implode(', ', $cs) : 'ok';
+
         $formActions[] = [
             'type'    => 'RowLayout',
             'items'   => [
                 [
-                    'type'    => 'RowLayout',
+                    'type'    => 'ColumnLayout',
                     'items'   => [
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => $curVersion,
-                            'enabled'  => false,
-                            'caption'  => 'Installed version',
+                            'type'    => 'Label',
+                            'caption' => 'Installed version',
                         ],
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => $curTimestamp,
-                            'enabled'  => false,
-                            'caption'  => 'Timestamp',
+                            'type'    => 'Label',
+                            'caption' => 'Repository version',
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'caption' => 'Total state',
                         ],
                     ],
                 ],
                 [
-                    'type'    => 'Label',
-                ],
-                [
-                    'type'    => 'RowLayout',
+                    'type'    => 'ColumnLayout',
                     'items'   => [
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => $topVersion,
-                            'enabled'  => false,
-                            'caption'  => 'Repository version',
+                            'type'    => 'Label',
+                            'caption' => $curVersion . ' (' . $curTimestamp . ')',
                         ],
                         [
-                            'type'     => 'ValidationTextBox',
-                            'value'    => $topTimestamp,
-                            'enabled'  => false,
-                            'caption'  => 'Timestamp',
+                            'type'    => 'Label',
+                            'caption' => $topVersion . ' (' . $topTimestamp . ')',
+                        ],
+                        [
+                            'type'    => 'Label',
+                            'name'    => 'TotalState',
+                            'caption' => $s,
                         ],
                     ],
                 ],
             ],
         ];
+
+        $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode($FileList));';
         $formActions[] = [
             'type'     => 'List',
             'name'     => 'FileList',
@@ -432,6 +490,38 @@ class ScriptDeployment extends IPSModule
                     'visible'  => false,
                     'name'     => 'openObject_FileList',
                     'caption'  => 'Open script',
+                ],
+                [
+                    'type'     => 'PopupButton',
+                    'caption'  => 'Show item',
+                    'name'     => 'ShowItem',
+                    'visible'  => false,
+                    'popup'    => [
+                        'caption'   => 'Show item',
+                        'items'     => [
+                            [
+                                'type'     => 'List',
+                                'name'     => 'ShowItem_List',
+                                'columns'  => [
+                                    [
+                                        'name'     => 'title',
+                                        'width'    => '100px',
+                                        'caption'  => 'Title',
+                                    ],
+                                    [
+                                        'name'     => 'value',
+                                        'width'    => 'auto',
+                                        'caption'  => 'Value',
+                                    ],
+                                ],
+                                'add'      => false,
+                                'delete'   => false,
+                                'values'   => [],
+                                'rowCount' => 1
+                            ],
+                        ],
+                        'closeCaption' => 'Cancel',
+                    ],
                 ],
                 [
                     'type'     => 'PopupButton',
@@ -611,7 +701,7 @@ class ScriptDeployment extends IPSModule
                 $file['id'] = 0;
                 $file['missing'] = true;
                 $msgV[] = 'disconnect';
-                $this->AddModuleActivity('manual disconnected "' . $name . '" from script ' . $scriptID, 0);
+                $this->AddModuleActivity('manual disconnected "' . $filename . '" from script ' . $scriptID, 0);
             } else {
                 $file['id'] = $scriptID;
                 $file['missing'] = false;
@@ -621,7 +711,7 @@ class ScriptDeployment extends IPSModule
                     $file['moved'] = false;
                     $msgV[] = 'adjust location';
                 }
-                $this->AddModuleActivity('manual connected "' . $name . '" to script ' . $scriptID, 0);
+                $this->AddModuleActivity('manual connected "' . $filename . '" to script ' . $scriptID, 0);
             }
             $file['added'] = false;
             $files[$index] = $file;
@@ -900,50 +990,12 @@ class ScriptDeployment extends IPSModule
     {
         $files = $this->ReadFileList();
 
-        $added = 0;
-        $missing = 0;
-        $lost = 0;
-        $modified = 0;
-        $moved = 0;
-        $orphan = 0;
-        $outdated = 0;
-        $removed = 0;
-        $unknown = 0;
-        foreach ($files as $file) {
-            if ($file['added']) {
-                $added++;
-            }
-            if ($file['missing']) {
-                $missing++;
-            }
-            if ($file['lost']) {
-                $lost++;
-            }
-            if ($file['modified']) {
-                $modified++;
-            }
-            if ($file['moved']) {
-                $moved++;
-            }
-            if ($file['orphan']) {
-                $orphan++;
-            }
-            if ($file['outdated']) {
-                $outdated++;
-            }
-            if ($file['removed']) {
-                $removed++;
-            }
-            if ($file['unknown']) {
-                $unknown++;
-            }
-        }
-
-        if ($lost || $missing || $moved || $orphan || $unknown) {
+        $counts = $this->count_state($files);
+        if ($counts['lost'] || $counts['missing'] || $counts['moved'] || $counts['renamed'] || $counts['orphan'] || $counts['unknown']) {
             $state = self::$STATE_UNCLEAR;
-        } elseif ($modified) {
+        } elseif ($counts['modified']) {
             $state = self::$STATE_MODIFIED;
-        } elseif ($added || $removed || $outdated) {
+        } elseif ($counts['added'] || $counts['removed'] || $counts['outdated']) {
             $state = self::$STATE_UPDATEABLE;
         } else {
             $state = self::$STATE_SYNCED;
@@ -990,6 +1042,18 @@ class ScriptDeployment extends IPSModule
                 $this->UpdateFormField('FileList', 'values', json_encode($values));
                 $this->UpdateFormField('FileList', 'rowCount', $n_values);
 
+				$files = $this->ReadFileList();
+				$counts = $this->count_state($files);
+				$cs = [];
+				foreach ($this->state_names() as $name) {
+					if (isset($counts[$name]) && $counts[$name] > 0) {
+						$cs[] = $this->state2text($name) . '=' . $counts[$name];
+					}
+				}
+				$s = count($cs) ? implode(', ', $cs) : 'ok';
+
+                $this->UpdateFormField('TotalState', 'caption', $s);
+
                 break;
             case 'UpdateFormField_FileList':
                 $jparams = json_decode($value, true);
@@ -1008,7 +1072,40 @@ class ScriptDeployment extends IPSModule
                 $this->UpdateFormField('connectScript_Location', 'value', $location);
                 $this->UpdateFormField('connectScript_ScriptID', 'value', $id);
 
-                $this->UpdateFormField('DeleteItem', 'visible', $id ? true : false);
+                $this->UpdateFormField('DeleteItem', 'visible', true);
+
+                $values = [
+                    [
+                        'title' => $this->Translate('Filename'),
+                        'value' => $filename,
+                    ],
+                    [
+                        'title' => $this->Translate('Name'),
+                        'value' => $name,
+                    ],
+                    [
+                        'title' => $this->Translate('Location'),
+                        'value' => $location,
+                    ],
+                ];
+                $title = $this->Translate('State');
+                foreach ($jparams['states'] as $state) {
+                    $values[] = [
+                        'title' => $title,
+                        'value' => $state['name'],
+                    ];
+                    $title = '';
+                    if ($state['info'] != '') {
+                        $values[] = [
+                            'title' => '',
+                            'value' => '(' . $state['info'] . ')',
+                        ];
+                    }
+                }
+                $n_values = count($values);
+                $this->UpdateFormField('ShowItem', 'visible', true);
+                $this->UpdateFormField('ShowItem_List', 'values', json_encode($values));
+                $this->UpdateFormField('ShowItem_List', 'rowCount', $n_values);
                 break;
             default:
                 $r = false;
@@ -1337,13 +1434,14 @@ class ScriptDeployment extends IPSModule
             'location' => '',
             'id'       => 0,
             'requires' => [],
-            'removed'  => false,
             'added'    => false,
+            'removed'  => false,
             'lost'     => false,
             'moved'    => false,
             'orphan'   => false,
             'missing'  => false,
             'modified' => false,
+            'renamed'  => false,
             'outdated' => false,
             'unknown'  => false,
         ];
@@ -1381,13 +1479,13 @@ class ScriptDeployment extends IPSModule
 
             $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
             if ($this->readFile($fname, $curContent, $err) == false) {
-                if ($scriptID == 0 && $oldFile['lost']) {
-                    $msgV = 'not longer in repository';
+                if ($scriptID == 0) {
+                    $msgV[] = 'not longer in repository';
                     $msgFileV[$curFile['filename']] = ['file' => $curFile, 'msgV' => $msgV];
                     // $this->SendDebug(__FUNCTION__, '1:'.print_r($msgFileV[$curFile['filename']], true),0);
                     continue;
                 }
-                $newFile['lost'] = true;
+                $newFile['lost'] = $err;
                 $msgV[] = 'not in repository';
             } else {
                 if ($scriptID == 0) {
@@ -1404,6 +1502,12 @@ class ScriptDeployment extends IPSModule
                     if (in_array($curFile['filename'], $updateableFiles)) {
                         $newFile['outdated'] = true;
                         $msgV[] = 'script is outdateable';
+                    }
+                    if (IPS_GetName($scriptID) != $newFile['name']) {
+                        $newFile['renamed'] = IPS_GetName($scriptID);
+                        $msgV[] = 'script is renamed';
+                    } else {
+                        $newFile['renamed'] = false;
                     }
                 }
             }
@@ -1498,7 +1602,7 @@ class ScriptDeployment extends IPSModule
                 $newFiles[$index] = $newFile;
                 $msgV[] = 'script has no parent';
             } elseif ($parents[0] != $parID) {
-                $newFile['moved'] = true;
+                $newFile['moved'] = IPS_GetLocation($scriptID);
                 $newFiles[$index] = $newFile;
                 $msgV[] = 'script is moved to other location';
             }
@@ -1525,7 +1629,7 @@ class ScriptDeployment extends IPSModule
                     }
                 }
                 if ($unknown_keywords != []) {
-                    $newFile['unknown'] = true;
+                    $newFile['unknown'] = $unknown_keywords;
                     $msgV[] = 'unknown keyword(s)=[' . implode(',', $unknown_keywords) . ']';
                 } else {
                     $newFile['unknown'] = false;
@@ -1549,7 +1653,7 @@ class ScriptDeployment extends IPSModule
             if ($scriptID == 0) {
                 continue;
             }
-            if ($newFile['modified']) {
+            if ($newFile['modified'] !== false) {
                 $ipsContent = IPS_GetScriptContent($scriptID);
                 $fname = $chgPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $newFile['filename'];
                 if ($this->writeFile($fname, $ipsContent, true, $err) == false) {
@@ -1601,11 +1705,11 @@ class ScriptDeployment extends IPSModule
         $msgFileV = [];
         $files = $this->ReadFileList();
         foreach ($files as $index => $file) {
+            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
+
             if ($file['id'] != 0) {
                 continue;
             }
-
-            $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
 
             $location = $file['location'];
             $parents = $this->Location2ParentChain($location, false);
@@ -1697,7 +1801,7 @@ class ScriptDeployment extends IPSModule
             $msgV = isset($msgFileV[$file['filename']]['msgV']) ? $msgFileV[$file['filename']]['msgV'] : [];
 
             $curContent = '';
-            if ($file['missing'] || $file['modified']) {
+            if ($file['missing'] !== false || $file['modified'] !== false) {
                 $fname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $file['filename'];
                 if ($this->readFile($fname, $curContent, $err) == false) {
                     $msgV[] = 'can\'t read file from repository';
@@ -1707,7 +1811,7 @@ class ScriptDeployment extends IPSModule
                 }
             }
 
-            if ($file['missing']) {
+            if ($file['missing'] !== false) {
                 $scriptID = IPS_CreateScript(SCRIPTTYPE_PHP);
                 if ($scriptID == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to create script', 0);
@@ -1761,7 +1865,7 @@ class ScriptDeployment extends IPSModule
                 $this->AddModuleActivity($msg, 0);
             }
 
-            if ($file['modified']) {
+            if ($file['modified'] !== false) {
                 $scriptID = $file['id'];
                 if (IPS_SetScriptContent($scriptID, $curContent) == false) {
                     $this->SendDebug(__FUNCTION__, 'unable to set content to script ' . $scriptID, 0);
@@ -1970,25 +2074,66 @@ class ScriptDeployment extends IPSModule
         return true;
     }
 
-    private function printFile($file)
+    private function count_state($files)
     {
-        $stateFields = [
-            'removed',
-            'added',
-            'lost',
-            'moved',
-            'orphan',
-            'missing',
-            'modified',
-            'outdated',
-            'unknown',
+        $counts = [
+            'added'     => 0,
+            'removed'   => 0,
+            'lost'      => 0,
+            'moved'     => 0,
+            'orphan'    => 0,
+            'missing'   => 0,
+            'modified'  => 0,
+            'renamed'   => 0,
+            'outdated'  => 0,
+            'unknown'   => 0,
         ];
 
-        $state = [];
-        foreach ($stateFields as $fld) {
-            if (isset($file[$fld]) && $file[$fld]) {
-                $state[] = $fld;
+        foreach ($files as $file) {
+            if ($file['added'] !== false) {
+                $counts['added']++;
             }
+            if ($file['removed'] !== false) {
+                $counts['removed']++;
+            }
+            if ($file['lost'] !== false) {
+                $counts['lost']++;
+            }
+            if ($file['moved'] !== false) {
+                $counts['moved']++;
+            }
+            if ($file['orphan'] !== false) {
+                $counts['orphan']++;
+            }
+            if ($file['missing'] !== false) {
+                $counts['missing']++;
+            }
+            if ($file['modified'] !== false) {
+                $counts['modified']++;
+            }
+            if ($file['renamed'] !== false) {
+                $counts['renamed']++;
+            }
+            if ($file['outdated'] !== false) {
+                $counts['outdated']++;
+            }
+            if ($file['unknown'] !== false) {
+                $counts['unknown']++;
+            }
+        }
+        return $counts;
+    }
+
+    private function printFile($file)
+    {
+        $state = [];
+        foreach ($this->state_names() as $name) {
+            if (isset($file[$name]) && $file[$name] !== false) {
+                $state[] = $name;
+            }
+        }
+        if ($state == []) {
+            $state[] = 'ok';
         }
 
         $s = 'filename=' . $file['filename'] . ', scriptID=' . $file['id'] . ', states=' . implode(',', $state);
