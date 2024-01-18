@@ -1042,15 +1042,15 @@ class ScriptDeployment extends IPSModule
                 $this->UpdateFormField('FileList', 'values', json_encode($values));
                 $this->UpdateFormField('FileList', 'rowCount', $n_values);
 
-				$files = $this->ReadFileList();
-				$counts = $this->count_state($files);
-				$cs = [];
-				foreach ($this->state_names() as $name) {
-					if (isset($counts[$name]) && $counts[$name] > 0) {
-						$cs[] = $this->state2text($name) . '=' . $counts[$name];
-					}
-				}
-				$s = count($cs) ? implode(', ', $cs) : 'ok';
+                $files = $this->ReadFileList();
+                $counts = $this->count_state($files);
+                $cs = [];
+                foreach ($this->state_names() as $name) {
+                    if (isset($counts[$name]) && $counts[$name] > 0) {
+                        $cs[] = $this->state2text($name) . '=' . $counts[$name];
+                    }
+                }
+                $s = count($cs) ? implode(', ', $cs) : 'ok';
 
                 $this->UpdateFormField('TotalState', 'caption', $s);
 
@@ -1827,14 +1827,6 @@ class ScriptDeployment extends IPSModule
                     $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (content)', 0);
                     continue;
                 }
-                $name = $file['name'];
-                if (IPS_SetName($scriptID, $name) == false) {
-                    $this->SendDebug(__FUNCTION__, 'unable to set name "' . $name . '" to script ' . $scriptID, 0);
-                    $msgV[] = 'unable to set script name "' . $name . '"';
-                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
-                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (name)', 0);
-                    continue;
-                }
                 $location = $file['location'];
                 $parents = $this->Location2ParentChain($location, true);
                 if ($parents === false) {
@@ -1850,6 +1842,33 @@ class ScriptDeployment extends IPSModule
                     $msgV[] = 'unable to set parent ' . $parID;
                     $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
                     $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (parent)', 0);
+                    continue;
+                }
+                $name = $file['name'];
+                $nV = [];
+                foreach (IPS_GetChildrenIDs($parID) as $cID) {
+                    $nV[] = IPS_GetName($cID);
+                }
+                sort($nV);
+                $idx = 0;
+                foreach ($nV as $n) {
+                    if ($n == $name) {
+                        $idx = 1;
+                    } elseif (preg_match('/' . $name . ' \(([0-9]+)\)$/', $n, $r)) {
+                        $idx = $r[1];
+                    }
+                }
+                if ($idx > 0) {
+                    $msgV[] = 'script with name "' . $name . '" already exists';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('problem while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (duplicate)', 0);
+                    $name .= ' (' . ($idx + 1) . ')';
+                }
+                if (IPS_SetName($scriptID, $name) == false) {
+                    $this->SendDebug(__FUNCTION__, 'unable to set name "' . $name . '" to script ' . $scriptID, 0);
+                    $msgV[] = 'unable to set script name "' . $name . '"';
+                    $msgFileV[$file['filename']] = ['file' => $file, 'msgV' => $msgV];
+                    $this->AddModuleActivity('failure occured while creating script ' . $scriptID . ' from "' . $file['filename'] . '" (name)', 0);
                     continue;
                 }
 
