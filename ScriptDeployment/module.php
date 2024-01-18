@@ -1621,7 +1621,6 @@ class ScriptDeployment extends IPSModule
                     $r = $mapping_function($indent);
                     if ($r === false) {
                         $unknown_keywords[] = $indent;
-                        break;
                     }
                 }
                 if ($unknown_keywords != []) {
