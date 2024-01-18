@@ -94,18 +94,6 @@ class ScriptDeployment extends IPSModule
         return $r;
     }
 
-    private function CheckModuleUpdate(array $oldInfo, array $newInfo)
-    {
-        $r = [];
-
-        return $r;
-    }
-
-    private function CompleteModuleUpdate(array $oldInfo, array $newInfo)
-    {
-        return '';
-    }
-
     private function SetReferences()
     {
         $this->MaintainReferences();
@@ -147,6 +135,14 @@ class ScriptDeployment extends IPSModule
 
         $this->MaintainVariable('State', $this->Translate('State'), VARIABLETYPE_INTEGER, 'ScriptDeployment.State', $vpos++, true);
         $this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
+
+        $url = $this->ReadPropertyString('url');
+        if ($url != '') {
+            $r = explode('/', $url);
+            if (count($r) > 0) {
+                $this->SetSummary($r[count($r) - 1]);
+            }
+        }
 
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
@@ -2080,7 +2076,7 @@ class ScriptDeployment extends IPSModule
         }
 
         $dict = [
-            'Version' => 0,
+            'version' => 0,
             'tstamp'  => time(),
             'files'   => $files,
         ];
