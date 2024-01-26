@@ -18,6 +18,12 @@ class ScriptDeployment extends IPSModule
     private static $DICTIONARY_FILE = 'dictionary.json';
     private static $FILE_DIR = 'files';
 
+    private static $TOP_ARCHIVE = 'TopArchive';
+    private static $CUR_ARCHIVE = 'CurrentArchive';
+
+    private static $DiffToCur = 'DifferenceToCurrent';
+    private static $DiffToTop = 'DifferenceToTop';
+
     private $SemaphoreID;
 
     public function __construct(string $InstanceID)
@@ -39,22 +45,13 @@ class ScriptDeployment extends IPSModule
 
         $this->RegisterPropertyBoolean('module_disable', false);
 
-        $this->RegisterPropertyString('url', '');
-        $this->RegisterPropertyString('user', '');
-        $this->RegisterPropertyString('password', '');
-        $this->RegisterPropertyString('token', '');
-        $this->RegisterPropertyInteger('port', '22');
-        $this->RegisterPropertyString('branch', 'main');
-        $this->RegisterPropertyString('git_user_name', 'IP-Symcon');
-        $this->RegisterPropertyString('git_user_email', '');
+        $this->RegisterPropertyString('package_name', '');
         $this->RegisterPropertyString('path', '');
 
+        $this->RegisterPropertyString('url', '');
         $this->RegisterPropertyString('update_time', '{"hour":0,"minute":0,"second":0}');
 
         $this->RegisterPropertyString('mapping_function', 'GetLocalConfig');
-
-        $this->RegisterAttributeString('commit', '');
-        $this->RegisterAttributeString('branches', json_encode([]));
 
         $this->RegisterAttributeString('UpdateInfo', json_encode([]));
         $this->RegisterAttributeString('ModuleStats', json_encode([]));
@@ -79,10 +76,10 @@ class ScriptDeployment extends IPSModule
     {
         $r = [];
 
-        $url = $this->ReadPropertyString('url');
-        if ($url == '') {
-            $this->SendDebug(__FUNCTION__, '"url" is missing', 0);
-            $r[] = $this->Translate('Git-Repository must be specified');
+        $package_name = $this->ReadPropertyString('package_name');
+        if ($package_name == '') {
+            $this->SendDebug(__FUNCTION__, '"package_name" is missing', 0);
+            $r[] = $this->Translate('Package name must be specified');
         }
 
         $path = $this->ReadPropertyString('path');
@@ -136,13 +133,8 @@ class ScriptDeployment extends IPSModule
         $this->MaintainVariable('State', $this->Translate('State'), VARIABLETYPE_INTEGER, 'ScriptDeployment.State', $vpos++, true);
         $this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
 
-        $url = $this->ReadPropertyString('url');
-        if ($url != '') {
-            $r = explode('/', $url);
-            if (count($r) > 0) {
-                $this->SetSummary($r[count($r) - 1]);
-            }
-        }
+        $package_name = $this->ReadPropertyString('package_name');
+        $this->SetSummary($package_name);
 
         $module_disable = $this->ReadPropertyBoolean('module_disable');
         if ($module_disable) {
@@ -173,80 +165,22 @@ class ScriptDeployment extends IPSModule
         ];
 
         $formElements[] = [
-            'type'    => 'ExpansionPanel',
-            'items'   => [
-                [
-                    'name'    => 'url',
-                    'type'    => 'ValidationTextBox',
-                    'width'   => '80%',
-                    'caption' => 'Git-Repository',
-                ],
-                [
-                    'name'    => 'branch',
-                    'type'    => 'ValidationTextBox',
-                    'caption' => ' ... Branch',
-                ],
-                [
-                    'type'    => 'Label',
-                    'caption' => 'for http/https and ssh'
-                ],
-                [
-                    'type'    => 'ValidationTextBox',
-                    'name'    => 'user',
-                    'caption' => ' ... User'
-                ],
-                [
-                    'type'    => 'PasswordTextBox',
-                    'name'    => 'token',
-                    'caption' => ' ... Personal access token'
-                ],
-                [
-                    'type'    => 'Label',
-                    'caption' => 'for http/https only'
-                ],
-                [
-                    'type'    => 'PasswordTextBox',
-                    'name'    => 'password',
-                    'caption' => ' ... Password'
-                ],
-                [
-                    'type'    => 'Label',
-                    'caption' => 'for ssh only'
-                ],
-                [
-                    'name'    => 'port',
-                    'type'    => 'NumberSpinner',
-                    'minimum' => 0,
-                    'caption' => ' ... Port'
-                ],
-            ],
-            'caption' => 'Repository remote configuration'
+            'name'    => 'package_name',
+            'type'    => 'ValidationTextBox',
+            'caption' => 'Package name',
         ];
 
         $formElements[] = [
-            'type'    => 'ExpansionPanel',
-            'items'   => [
-                [
-                    'type'    => 'Label',
-                    'caption' => 'Informations for git config ...'
-                ],
-                [
-                    'type'    => 'ValidationTextBox',
-                    'name'    => 'git_user_name',
-                    'caption' => ' ... user.name'
-                ],
-                [
-                    'type'    => 'ValidationTextBox',
-                    'name'    => 'git_user_email',
-                    'caption' => ' ... user.email'
-                ],
-                [
-                    'type'    => 'ValidationTextBox',
-                    'name'    => 'path',
-                    'caption' => 'local path'
-                ],
-            ],
-            'caption' => 'Repository local configuration'
+			'name'    => 'path',
+			'type'    => 'ValidationTextBox',
+			'caption' => 'Local path'
+		];
+
+        $formElements[] = [
+            'name'    => 'url',
+            'type'    => 'ValidationTextBox',
+            'width'   => '80%',
+            'caption' => 'URL to download zip archive',
         ];
 
         $formElements[] = [
@@ -600,6 +534,49 @@ class ScriptDeployment extends IPSModule
             ],
         ];
 
+        $opts = [
+            [
+                'caption' => 'content of top level',
+                'value'   => self::$TOP_DIR,
+            ],
+        ];
+        $name = $this->Translate('CurrentArchive');
+        @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+        if ($mediaID == false) {
+            $opts[] = [
+                'caption' => 'content of current used version',
+                'value'   => self::$CUR_DIR,
+            ];
+        }
+
+        $formActions[] = [
+            'type'     => 'PopupButton',
+            'caption'  => 'Load zip archive',
+            'popup'    => [
+                'caption'   => 'Load zip archive to media object',
+                'items'     => [
+                    [
+                        'type'    => 'Select',
+                        'name'    => 'Load_Destination',
+                        'caption' => 'Destination',
+                        'options' => $opts,
+                    ],
+                    [
+                        'type'    => 'SelectFile',
+                        'caption' => 'ZIP archive',
+                        'name'    => 'Load_Content',
+                    ],
+                ],
+                'buttons' => [
+                    [
+                        'caption' => 'Load',
+                        'onClick' => 'IPS_RequestAction($id, "Save2Media", json_encode([ "dst" => $Load_Destination, "content" => $Load_Content ]));',
+                    ],
+                ],
+                'closeCaption' => 'Cancel',
+            ],
+        ];
+
         $formActions[] = [
             'type'      => 'ExpansionPanel',
             'caption'   => 'Expert area',
@@ -738,142 +715,76 @@ class ScriptDeployment extends IPSModule
         $this->MaintainTimer('CheckTimer', $sec * 1000);
     }
 
-    private function BuildGitUrl()
+    private function SyncRepository($subdir)
     {
-        $url = $this->ReadPropertyString('url');
-        $user = $this->ReadPropertyString('user');
-        $token = $this->ReadPropertyString('token');
-        $password = $this->ReadPropertyString('password');
-        $port = $this->ReadPropertyInteger('port');
-
-        $auth = '';
-        if ($user != '') {
-            $auth = rawurlencode($user);
-            if ($token != '') {
-                $auth .= ':';
-                $auth .= $token;
-            } elseif ($password != '') {
-                $auth .= ':';
-                $auth .= rawurlencode($password);
-            }
-        }
-
-        if (substr($url, 0, 8) == 'https://') {
-            $s = substr($url, 8);
-            $url = 'https://';
-            if ($auth != '') {
-                $url .= $auth;
-                $url .= '@';
-            }
-            $url .= $s;
-        }
-        if (substr($url, 0, 7) == 'http://') {
-            $s = substr($url, 7);
-            $url = 'http://';
-            if ($auth != '') {
-                $url .= $auth;
-                $url .= '@';
-            }
-            $url .= $s;
-        }
-        if (substr($url, 0, 6) == 'ssh://' && $port != '') {
-            $s = substr($url, 6);
-            $pos = strpos($s, '/');
-            $srv = substr($s, 0, $pos);
-            $path = substr($s, $pos);
-            $url = 'ssh://';
-            if ($user != '') {
-                $url .= rawurlencode($user);
-                $url .= '@';
-            }
-            $url .= $srv;
-            if ($port != '') {
-                if ($port != '') {
-                    $url .= ':';
-                    $url .= $port;
-                }
-            }
-            $url .= $path;
-        }
-
-        return $url;
-    }
-
-    private function SyncRepository($subdir, $branch, $commit)
-    {
-        $this->SendDebug(__FUNCTION__, 'subdir=' . $subdir . ', branch=' . $branch . ', commit=' . $commit, 0);
+        $this->SendDebug(__FUNCTION__, 'subdir=' . $subdir, 0);
 
         $basePath = $this->getBasePath();
         $path = $this->getSubPath($subdir);
 
-        $repo_delete = false;
-        $repo_clone = true;
-
-        if (file_exists($path)) {
-            if (is_dir($path) == false) {
-                $repo_delete = true;
-            } elseif ($this->changeDir($path) == false) {
-                $repo_delete = true;
-            } elseif ($this->execute('git status --short 2>&1', $output) == false || count($output) > 0) {
-                $repo_delete = true;
-            } else {
-                $repo_clone = false;
-            }
+        switch ($subdir) {
+            case self::$TOP_DIR:
+                $name = $this->Translate(self::$TOP_ARCHIVE);
+                break;
+            case self::$CUR_DIR:
+                $name = $this->Translate(self::$CUR_ARCHIVE);
+                break;
+            case self::$CHG_DIR:
+                $name = $this->Translate(self::$CUR_ARCHIVE);
+                break;
+            default:
+                $this->SendDebug(__FUNCTION__, 'unsupported subdir ' . $subdir, 0);
+                return false;
         }
 
-        $this->SendDebug(__FUNCTION__, 'repo_delete=' . $this->bool2str($repo_delete) . ', repo_clone=' . $this->bool2str($repo_clone), 0);
+        @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+        if ($mediaID == false && $subdir != self::$TOP_DIR) {
+            $name = $this->Translate(self::$TOP_ARCHIVE);
+            @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+        }
+        if ($mediaID == false) {
+            $this->SendDebug(__FUNCTION__, 'no archive found for subdir ' . $subdir, 0);
+            return false;
+        }
+        $media = IPS_GetMedia($mediaID);
+        $zipPath = IPS_GetKernelDir() . $media['MediaFile'];
 
         if ($this->changeDir($basePath) == false) {
             return false;
         }
 
-        if ($repo_delete) {
-            $this->SendDebug(__FUNCTION__, 'remove directory ' . $path, 0);
-            if ($this->rmDir($path) == false) {
-                return false;
-            }
-        }
-
-        if (file_exists($path) == false) {
-            if ($this->makeDir($path) == false) {
-                return false;
-            }
-        }
-
-        if ($repo_clone) {
-            if ($this->execute('git clone ' . $this->BuildGitUrl() . ' ' . $path . ' 2>&1', $output) == false) {
-                return false;
-            }
-        }
-
-        if ($this->changeDir($path) == false) {
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to open zip archive "' . $zipPath . '"', 0);
             return false;
         }
 
-        if ($commit != '') {
-            if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
+        $filename = $zip->getNameIndex(0);
+        $targetPath = $basePath . DIRECTORY_SEPARATOR . basename($filename);
+
+        if (file_exists($targetPath)) {
+            $this->SendDebug(__FUNCTION__, 'remove directory ' . $targetPath, 0);
+            if ($this->rmDir($targetPath) == false) {
+                $zip->close();
                 return false;
             }
-            $curCommit = $output[0];
-            if ($curCommit != $commit) {
-                $this->execute('git config advice.detachedHead false', $output);
-                if ($this->execute('git checkout ' . $commit . ' 2>&1', $output) == false) {
-                    return false;
-                }
-            }
-        } else {
-            if ($this->execute('git symbolic-ref --short HEAD 2>&1', $output) == false) {
+        }
+
+        if (file_exists($path)) {
+            $this->SendDebug(__FUNCTION__, 'remove directory ' . $path, 0);
+            if ($this->rmDir($path) == false) {
+                $zip->close();
                 return false;
             }
-            $curBranch = $output[0];
-            if ($curBranch != $branch) {
-                if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
-                    return false;
-                }
-            }
-            if ($this->execute('git pull 2>&1', $output) == false) {
-                return false;
-            }
+        }
+
+        $this->SendDebug(__FUNCTION__, 'extract ' . $zipPath . ' (' . $subdir . ')', 0);
+        $zip->extractTo($basePath);
+        $zip->close();
+
+        if (rename($targetPath, $path) == false) {
+            $this->SendDebug(__FUNCTION__, 'unable to rename directory ' . $targetPath . ' to ' . $path, 0);
+            return false;
         }
 
         return true;
@@ -892,8 +803,15 @@ class ScriptDeployment extends IPSModule
         }
 
         $url = $this->ReadPropertyString('url');
-        $path = $this->ReadPropertyString('path');
+        if ($url != '') {
+            $this->SendDebug(__FUNCTION__, 'update from ' . $url, 0);
+            $content = file_get_contents($url);
+            if ($content != false) {
+                $this->SetMediaData(self::$TOP_ARCHIVE, $content, MEDIATYPE_DOCUMENT, '.zip', false);
+            }
+        }
 
+        $path = $this->ReadPropertyString('path');
         $basePath = $this->getBasePath();
 
         $dirs = [$path, $basePath];
@@ -905,13 +823,10 @@ class ScriptDeployment extends IPSModule
             }
         }
 
-        $branch = $this->getBranch();
-        $commit = $this->getCommit();
-
         $topPath = $this->getSubPath(self::$TOP_DIR);
         $curPath = $this->getSubPath(self::$CUR_DIR);
 
-        if ($this->SyncRepository(self::$TOP_DIR, $branch, '') == false) {
+        if ($this->SyncRepository(self::$TOP_DIR) == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
@@ -922,28 +837,7 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        if ($this->execute('git branch -r 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $allBranch = [];
-        foreach ($output as $s) {
-            if (substr($s, 2, 11) == 'origin/HEAD') {
-                continue;
-            }
-            $allBranch[] = substr($s, 9);
-        }
-        $this->WriteAttributeString('branches', json_encode($allBranch));
-        $this->SendDebug(__FUNCTION__, 'allBranch=' . implode(', ', $allBranch), 0);
-        if (in_array($branch, $allBranch) == false) {
-            $this->SendDebug(__FUNCTION__, 'unknown branch "' . $branch . '"', 0);
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-
-        if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
+        if ($this->SyncRepository(self::$CUR_DIR) == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
@@ -952,16 +846,6 @@ class ScriptDeployment extends IPSModule
             $this->SetValue('State', self::$STATE_FAULTY);
             IPS_SemaphoreLeave($this->SemaphoreID);
             return false;
-        }
-        if ($commit == '') {
-            if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
-                $this->SetValue('State', self::$STATE_FAULTY);
-                IPS_SemaphoreLeave($this->SemaphoreID);
-                return false;
-            }
-            $curCommit = $output[0];
-            $this->SendDebug(__FUNCTION__, 'curCommit=' . $curCommit, 0);
-            $this->WriteAttributeString('commit', $curCommit);
         }
 
         $msgFileV = [];
@@ -1102,6 +986,13 @@ class ScriptDeployment extends IPSModule
                 $this->UpdateFormField('ShowItem', 'visible', true);
                 $this->UpdateFormField('ShowItem_List', 'values', json_encode($values));
                 $this->UpdateFormField('ShowItem_List', 'rowCount', $n_values);
+                break;
+            case 'Save2Media':
+                $jparams = json_decode($value, true);
+                $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
+                $dst = $jparams['dst'];
+                $content = $jparams['content'];
+                $this->Save2Media($dst, $content);
                 break;
             default:
                 $r = false;
@@ -1329,9 +1220,9 @@ class ScriptDeployment extends IPSModule
 
     private function getBasePath()
     {
-        $url = $this->ReadPropertyString('url');
         $path = $this->ReadPropertyString('path');
-        return $path . DIRECTORY_SEPARATOR . basename($url, '.git');
+        $package_name = $this->ReadPropertyString('package_name');
+        return $path . DIRECTORY_SEPARATOR . $package_name;
     }
 
     private function getSubPath($subPath)
@@ -1365,26 +1256,8 @@ class ScriptDeployment extends IPSModule
         return array_reverse($parents);
     }
 
-    private function getBranch()
-    {
-        $branch = $this->ReadPropertyString('branch');
-        if ($branch == '') {
-            $branch = 'main';
-        }
-        return $branch;
-    }
-
-    private function getCommit()
-    {
-        $commit = $this->ReadAttributeString('commit');
-        return $commit;
-    }
-
     private function CheckFileList(&$msgFileV)
     {
-        $branch = $this->getBranch();
-        $commit = $this->getCommit();
-
         $basePath = $this->getBasePath();
         $topPath = $this->getSubPath(self::$TOP_DIR);
         $curPath = $this->getSubPath(self::$CUR_DIR);
@@ -1395,22 +1268,6 @@ class ScriptDeployment extends IPSModule
             return false;
         }
         $this->SendDebug(__FUNCTION__, 'top-dictionary=' . print_r($topDict, true), 0);
-
-        if ($this->changeDir($topPath) == false) {
-            return false;
-        }
-        if ($this->execute('git diff --stat ' . $commit . ' 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $updateableFiles = [];
-        foreach ($output as $s) {
-            if (preg_match('/[ ]*files\/([^ ]*)[ ]*\| .*/', $s, $r)) {
-                $updateableFiles[] = $r[1];
-            }
-        }
-        $this->SendDebug(__FUNCTION__, 'updateableFiles=' . print_r($updateableFiles, true), 0);
 
         $curDict = $this->readDictonary($curPath);
         if ($curDict === false) {
@@ -1441,6 +1298,22 @@ class ScriptDeployment extends IPSModule
             'outdated' => false,
             'unknown'  => false,
         ];
+
+        $updateableFiles = [];
+        foreach ($curFiles as $curFile) {
+            $topFname = $topPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $curFile['filename'];
+            $curFname = $curPath . DIRECTORY_SEPARATOR . self::$FILE_DIR . DIRECTORY_SEPARATOR . $curFile['filename'];
+            if ($this->readFile($topFname, $topContent, $err) == false) {
+                continue;
+            }
+            if ($this->readFile($curFname, $curContent, $err) == false) {
+                continue;
+            }
+            if (strcmp($curContent, $topContent) != 0) {
+                $updateableFiles[] = $curFile['filename'];
+            }
+        }
+        $this->SendDebug(__FUNCTION__, 'updateableFiles=' . print_r($updateableFiles, true), 0);
 
         $newFiles = [];
         foreach ($curFiles as $curFile) {
@@ -1638,8 +1511,30 @@ class ScriptDeployment extends IPSModule
 
         $this->WriteFileList($newFiles);
 
+        $sys = IPS_GetKernelPlatform();
+        switch ($sys) {
+            case 'Ubuntu':
+            case 'Raspberry Pi':
+            case 'Docker':
+            case 'Ubuntu (Docker)':
+            case 'Raspberry Pi (Docker)':
+                $diff_cmd = 'diff -ru';
+                break;
+            case 'SymBox':
+                $diff_cmd = 'diff -r';
+                break;
+            default:
+                $diff_cmd = '';
+                break;
+        }
+
+        if ($diff_cmd == '') {
+            $this->SendDebug(__FUNCTION__, 'no diff command, no patch file', 0);
+            return true;
+        }
+
         $chgPath = $this->getSubPath(self::$CHG_DIR);
-        if ($this->SyncRepository(self::$CHG_DIR, $branch, $commit) == false) {
+        if ($this->SyncRepository(self::$CHG_DIR) == false) {
             return false;
         }
 
@@ -1661,33 +1556,20 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $patchFile = $basePath . DIRECTORY_SEPARATOR . 'cur.patch';
-        if ($this->execute('git diff > ' . $patchFile . ' 2>&1', $output) == false) {
+        if ($this->diffFiles($chgPath, $curPath, $patchContent) == false) {
             return false;
         }
-        if ($this->readFile($patchFile, $patchContent, $err) == false) {
+        $this->SetMediaData(self::$DiffToCur, $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+
+        if ($this->diffFiles($chgPath, $topPath, $patchContent) == false) {
             return false;
         }
-        $this->SetMediaData('DifferenceToCurrent', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
-        if (unlink($patchFile) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
-            return false;
-        }
-        if ($this->execute('git diff -R ' . $branch . ' > ' . $patchFile . ' 2>&1', $output) == false) {
-            return false;
-        }
-        if ($this->readFile($patchFile, $patchContent, $err) == false) {
-            return false;
-        }
-        $this->SetMediaData('DifferenceToTop', $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
-        if (unlink($patchFile) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to delete file ' . $patchFile, 0);
-            return false;
-        }
+        $this->SetMediaData(self::$DiffToTop, $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
 
         if ($this->changeDir($basePath) == false) {
             return false;
         }
+
         if ($this->rmDir($chgPath) == false) {
             return false;
         }
@@ -1744,49 +1626,17 @@ class ScriptDeployment extends IPSModule
     {
         if (IPS_SemaphoreEnter($this->SemaphoreID, self::$semaphoreTM) == false) {
             $this->SendDebug(__FUNCTION__, 'repository is locked', 0);
-            return;
+            return false;
         }
 
-        $branch = $this->getBranch();
-        $commit = $this->getCommit();
+        $s = $this->GetMediaData(self::$TOP_ARCHIVE);
+        $this->SetMediaData(self::$CUR_ARCHIVE, $s, MEDIATYPE_DOCUMENT, '.zip', false);
+        if ($this->SyncRepository(self::$CUR_DIR) == false) {
+            return false;
+        }
 
         $basePath = $this->getBasePath();
         $curPath = $this->getSubPath(self::$CUR_DIR);
-
-        if ($this->SyncRepository(self::$CUR_DIR, $branch, $commit) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->changeDir($curPath) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->execute('git checkout ' . $branch . ' 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->execute('git pull 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        if ($this->execute('git rev-parse HEAD 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
-        $commit = $output[0];
-        $this->SendDebug(__FUNCTION__, 'new commit=' . $commit, 0);
-        $this->WriteAttributeString('commit', $commit);
-        $this->execute('git config advice.detachedHead false', $output);
-        if ($this->execute('git checkout ' . $commit . ' 2>&1', $output) == false) {
-            $this->SetValue('State', self::$STATE_FAULTY);
-            IPS_SemaphoreLeave($this->SemaphoreID);
-            return false;
-        }
 
         $msgFileV = [];
         $this->CheckFileList($msgFileV);
@@ -1928,10 +1778,7 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $url = $this->ReadPropertyString('url');
-        if (preg_match('/^([^:]*):\/\/[^@]*@(.*)$/', $url, $p)) {
-            $url = $p[1] . '://' . $p[2];
-        }
+        $package_name = $this->ReadPropertyString('package_name');
 
         $keywords = [
             'Source',
@@ -1942,7 +1789,7 @@ class ScriptDeployment extends IPSModule
 
         $new_lines = [];
         $new_lines = [
-            $this->Translate('Source') . ': ' . $url,
+            $this->Translate('Source') . ': ' . $package_name,
             $this->Translate('Source file') . ': ' . $filename,
             $this->Translate('Target location') . ': ' . $location,
             $this->Translate('Designation') . ': ' . $name,
@@ -2152,5 +1999,64 @@ class ScriptDeployment extends IPSModule
 
         $s = 'filename=' . $file['filename'] . ', scriptID=' . $file['id'] . ', states=' . implode(',', $state);
         return $s;
+    }
+
+    private function Save2Media($dst, $content)
+    {
+        switch ($dst) {
+            case self::$TOP_DIR:
+                $ident = self::$TOP_ARCHIVE;
+                break;
+            case self::$CUR_DIR:
+                $ident = self::$CUR_ARCHIVE;
+                break;
+            default:
+                $this->SendDebug(__FUNCTION__, 'unsupported destination ' . $dst, 0);
+                return false;
+        }
+
+        if ($content == '') {
+            $this->SendDebug(__FUNCTION__, 'no content -> ignore', 0);
+            return true;
+        }
+        $this->SetMediaData($ident, base64_decode($content), MEDIATYPE_DOCUMENT, '.zip', false);
+        return true;
+    }
+
+    private function diffFiles($from, $to, &$diff)
+    {
+        $sys = IPS_GetKernelPlatform();
+        switch ($sys) {
+            case 'Ubuntu':
+            case 'Raspberry Pi':
+            case 'Docker':
+            case 'Ubuntu (Docker)':
+            case 'Raspberry Pi (Docker)':
+                $cmd = 'diff -ru ' . $from . ' ' . $to;
+                break;
+            case 'SymBox':
+                $cmd = 'diff -r ' . $from . ' ' . $to;
+                break;
+            default:
+                $cmd = '';
+                break;
+        }
+
+        $time_start = microtime(true);
+        $data = exec($cmd, $out, $exitcode);
+        $duration = round(microtime(true) - $time_start, 2);
+
+        if ($exitcode == 0) {
+            $this->SendDebug(__FUNCTION__, ' ... equal', 0);
+            $diff = '';
+            return true;
+        }
+        if ($exitcode == 1) {
+            $this->SendDebug(__FUNCTION__, ' ... differ', 0);
+            $diff = implode(PHP_EOL, $out);
+            return true;
+        }
+        $this->SendDebug(__FUNCTION__, ' ... exitcode=' . $exitcode, 0);
+        return false;
     }
 }

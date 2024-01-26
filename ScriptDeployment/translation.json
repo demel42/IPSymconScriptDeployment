@@ -4,31 +4,15 @@
 			"Script deployment": "Skript-Bereitstellung",
 
 			"__function__": "CheckConfiguration",
-			"Git-Repository must be specified": "Git-Repository muss angegeben werden",
+			"Package name must be specified": "Paketname muss angegeben werden",
 			"Local path must be specified": "Lokaler Pfad muss angegeben werden",
 
 			"__properties__": "",
 			"Disable instance": "Instanz deaktivieren",
 
-			"__emelents__": "", 
-			"Repository remote configuration": "Konfiguration des entfernten Repositorys",
-			"Git-Repository": "Git-Repository",
-			" ... Branch": " ... Branch",
-
-			"for http/https and ssh": "für http/https und ssh",
-			" ... User": " ... Benutzer",
-			" ... Personal access token": " ... Personal access token",
-			"for http/https only": "nur für http/https",
-			" ... Password": " ... Passwort",
-			"for ssh only": "nur für ssh",
-			" ... Port": " ... Port",
-
-			"Repository local configuration": "Konfiguration des lokalen Repositorys",
-			"Informations for git config ...": "Angaben für git config ...",
-			" ... user.name": " ... user.name",
-			" ... user.email": " ... user.email",
-
-			"local path": "lokales Verzeichnis",
+			"Package name": "Paketname",
+			"Local path": "lokales Verzeichnis",
+			"URL to download zip archive": "URL zum Herunterladen des Zip-Archivs",
 
 			"Time for the cyclical check": "Uhrzeit für die zyklische Prüfung",
 
@@ -85,6 +69,15 @@
 			"Unable to resolve location \"{$location}\"": "Ort \"{$location}\" kann nicht aufgelöst werden",
 			"Unable to set parent": "Übergeordnetes Element kann nicht gesetzt werden",
 
+			"__actions__": "Load2Media",
+			"content of top level": "Inhalt der neuesten Version",
+			"content of current used version": "Inhalt der lokalen Version",
+			"Load zip archive": "Zip-Archiv laden",
+			"Load zip archive to media object": "Zip-Archiv in das Medien-Objekt laden",
+			"Destination": "Ziel",
+			"ZIP archive": "ZIP-Archiv",
+			"Load": "Laden",
+
 			"__variables__": "",
 			"State": "Zustand",
 			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",
@@ -92,7 +85,9 @@
 			"__media__": "",
 			"FileList": "Liste der Skripte",
 			"DifferenceToCurrent": "Lokale Änderungen",
-			"DifferenceToTop": "Änderungen zur Repository",
+			"DifferenceToTop": "Änderungen zur neuesten Version",
+			"TopArchive": "Archiv der neuen Version",
+			"CurrentArchive": "Archiv der lokalen Version",
 
 			"__end__": ""
 		}
