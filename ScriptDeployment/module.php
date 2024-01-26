@@ -171,10 +171,10 @@ class ScriptDeployment extends IPSModule
         ];
 
         $formElements[] = [
-			'name'    => 'path',
-			'type'    => 'ValidationTextBox',
-			'caption' => 'Local path'
-		];
+            'name'    => 'path',
+            'type'    => 'ValidationTextBox',
+            'caption' => 'Local path'
+        ];
 
         $formElements[] = [
             'name'    => 'url',
@@ -359,10 +359,12 @@ class ScriptDeployment extends IPSModule
                     'items'   => [
                         [
                             'type'    => 'Label',
+                            'name'    => 'CurVersion',
                             'caption' => $curVersion . ' (' . $curTimestamp . ')',
                         ],
                         [
                             'type'    => 'Label',
+                            'name'    => 'TopVersion',
                             'caption' => $topVersion . ' (' . $topTimestamp . ')',
                         ],
                         [
@@ -933,6 +935,12 @@ class ScriptDeployment extends IPSModule
                 $s = count($cs) ? implode(', ', $cs) : 'ok';
 
                 $this->UpdateFormField('TotalState', 'caption', $s);
+
+                $curPath = $this->getSubPath(self::$CUR_DIR);
+                $curDict = $this->readDictonary($curPath);
+                $curVersion = isset($curDict['version']) ? $curDict['version'] : '';
+                $curTimestamp = isset($curDict['tstamp']) ? date('d.m.Y H:i:s', (int) $curDict['tstamp']) : '';
+                $this->UpdateFormField('CurVersion', 'caption', $curVersion . ' (' . $curTimestamp . ')');
 
                 break;
             case 'UpdateFormField_FileList':
