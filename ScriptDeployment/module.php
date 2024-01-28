@@ -828,7 +828,7 @@ class ScriptDeployment extends IPSModule
             $this->SendDebug(__FUNCTION__, 'update from ' . $url, 0);
             $content = file_get_contents($url);
             if ($content != false) {
-                $this->SetMedia(self::$TOP_ARCHIVE, $content);
+                $this->SetMediaContent(self::$TOP_ARCHIVE, $content);
             }
         }
 
@@ -1586,12 +1586,12 @@ class ScriptDeployment extends IPSModule
         if ($this->diffFiles($chgPath, $curPath, $patchContent) == false) {
             return false;
         }
-        $this->SetMedia(self::$DIFF_TO_CUR, $patchContent);
+        $this->SetMediaContent(self::$DIFF_TO_CUR, $patchContent);
 
         if ($this->diffFiles($chgPath, $topPath, $patchContent) == false) {
             return false;
         }
-        $this->SetMedia(self::$DIFF_TO_TOP, $patchContent);
+        $this->SetMediaContent(self::$DIFF_TO_TOP, $patchContent);
 
         if ($this->changeDir($basePath) == false) {
             return false;
@@ -1656,8 +1656,8 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $content = $this->GetMedia(self::$TOP_ARCHIVE);
-        $this->SetMedia(self::$CUR_ARCHIVE, $content);
+        $content = $this->GetMediaContent(self::$TOP_ARCHIVE);
+        $this->SetMediaContent(self::$CUR_ARCHIVE, $content);
         if ($this->SyncRepository(self::$CUR_DIR) == false) {
             return false;
         }
@@ -1849,7 +1849,7 @@ class ScriptDeployment extends IPSModule
 
     private function ReadFileList()
     {
-        $s = $this->GetMedia(self::$FILE_LIST);
+        $s = $this->GetMediaContent(self::$FILE_LIST);
         @$files = json_decode((string) $s, true);
         if ($files == false) {
             $files = [];
@@ -1876,8 +1876,8 @@ class ScriptDeployment extends IPSModule
     {
         usort($files, [__CLASS__, 'cmp_fileList']);
         $s = json_encode($files, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($this->GetMedia(self::$FILE_LIST) != $s) {
-            $this->SetMedia(self::$FILE_LIST, $s);
+        if ($this->GetMediaContent(self::$FILE_LIST) != $s) {
+            $this->SetMediaContent(self::$FILE_LIST, $s);
         }
 
         $this->SetReferences();
@@ -2034,7 +2034,7 @@ class ScriptDeployment extends IPSModule
             $this->SendDebug(__FUNCTION__, 'no content -> ignore', 0);
             return true;
         }
-        $this->SetMedia($ident, base64_decode($content));
+        $this->SetMediaContent($ident, base64_decode($content));
         return true;
     }
 
