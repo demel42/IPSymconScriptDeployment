@@ -97,33 +97,11 @@ class ScriptDeployment extends IPSModule
     {
         $r = [];
 
-        if ($this->version2num($oldInfo) < $this->version2num('1.0')) {
-            $r[] = $this->Translate('Set ident of media objects');
-        }
-
         return $r;
     }
 
     private function CompleteModuleUpdate(array $oldInfo, array $newInfo)
     {
-        if ($this->version2num($oldInfo) < $this->version2num('1.0')) {
-            $m = [
-                self::$FILE_LIST         => '.txt',
-                self::$DIFF_TO_CUR       => '.txt',
-                self::$DIFF_TO_TOP       => '.txt',
-                self::$CUR_ARCHIVE       => '.zip',
-                self::$TOP_ARCHIVE       => '.zip',
-            ];
-
-            foreach ($m as $ident => $extension) {
-                $filename = 'media' . DIRECTORY_SEPARATOR . $this->InstanceID . '-' . $ident . $extension;
-                @$mediaID = IPS_GetMediaIDByFile($filename);
-                if ($mediaID != false) {
-                    IPS_SetIdent($mediaID, $ident);
-                }
-            }
-        }
-
         return '';
     }
 
