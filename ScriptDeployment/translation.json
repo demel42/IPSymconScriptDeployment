@@ -7,6 +7,9 @@
 			"Package name must be specified": "Paketname muss angegeben werden",
 			"Local path must be specified": "Lokaler Pfad muss angegeben werden",
 
+			"__function__": "CheckUpdate",
+			"Set ident of media objects": "Ident der Media-Objekte setzen",
+
 			"__properties__": "",
 			"Disable instance": "Instanz deaktivieren",
 
@@ -83,11 +86,11 @@
 			"Timestamp of last adjustment": "Zeitpunkt des letzten Abgleichs",
 
 			"__media__": "",
-			"FileList": "Liste der Skripte",
-			"DifferenceToCurrent": "Lokale Änderungen",
-			"DifferenceToTop": "Änderungen zur neuesten Version",
-			"TopArchive": "Archiv der neuen Version",
-			"CurrentArchive": "Archiv der lokalen Version",
+			"List of scripts": "Liste der Skripte",
+			"Local changes": "Lokale Änderungen",
+			"Changes to the latest version": "Änderungen zur neuesten Version",
+			"Archive of the new version": "Archiv der neuen Version",
+			"Archive of the local version": "Archiv der lokalen Version",
 
 			"__end__": ""
 		}

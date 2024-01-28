@@ -18,11 +18,13 @@ class ScriptDeployment extends IPSModule
     private static $DICTIONARY_FILE = 'dictionary.json';
     private static $FILE_DIR = 'files';
 
+    private static $FILE_LIST = 'FileList';
+
+    private static $DIFF_TO_CUR = 'DifferenceToCurrent';
+    private static $DIFF_TO_TOP = 'DifferenceToTop';
+
     private static $TOP_ARCHIVE = 'TopArchive';
     private static $CUR_ARCHIVE = 'CurrentArchive';
-
-    private static $DiffToCur = 'DifferenceToCurrent';
-    private static $DiffToTop = 'DifferenceToTop';
 
     private $SemaphoreID;
 
@@ -91,6 +93,40 @@ class ScriptDeployment extends IPSModule
         return $r;
     }
 
+    private function CheckModuleUpdate(array $oldInfo, array $newInfo)
+    {
+        $r = [];
+
+        if ($this->version2num($oldInfo) < $this->version2num('1.0')) {
+            $r[] = $this->Translate('Set ident of media objects');
+        }
+
+        return $r;
+    }
+
+    private function CompleteModuleUpdate(array $oldInfo, array $newInfo)
+    {
+        if ($this->version2num($oldInfo) < $this->version2num('1.0')) {
+            $m = [
+                self::$FILE_LIST         => '.txt',
+                self::$DIFF_TO_CUR       => '.txt',
+                self::$DIFF_TO_TOP       => '.txt',
+                self::$CUR_ARCHIVE       => '.zip',
+                self::$TOP_ARCHIVE       => '.zip',
+            ];
+
+            foreach ($m as $ident => $extension) {
+                $filename = 'media' . DIRECTORY_SEPARATOR . $this->InstanceID . '-' . $ident . $extension;
+                @$mediaID = IPS_GetMediaIDByFile($filename);
+                if ($mediaID != false) {
+                    IPS_SetIdent($mediaID, $ident);
+                }
+            }
+        }
+
+        return '';
+    }
+
     private function SetReferences()
     {
         $this->MaintainReferences();
@@ -132,6 +168,13 @@ class ScriptDeployment extends IPSModule
 
         $this->MaintainVariable('State', $this->Translate('State'), VARIABLETYPE_INTEGER, 'ScriptDeployment.State', $vpos++, true);
         $this->MaintainVariable('Timestamp', $this->Translate('Timestamp of last adjustment'), VARIABLETYPE_INTEGER, '~UnixTimestamp', $vpos++, true);
+
+        $vpos = 100;
+        $this->MaintainMedia(self::$FILE_LIST, $this->Translate('List of scripts'), MEDIATYPE_DOCUMENT, '.txt', false, $vpos++, true);
+        $this->MaintainMedia(self::$DIFF_TO_CUR, $this->Translate('Local changes'), MEDIATYPE_DOCUMENT, '.txt', false, $vpos++, true);
+        $this->MaintainMedia(self::$DIFF_TO_TOP, $this->Translate('Changes to the latest version'), MEDIATYPE_DOCUMENT, '.txt', false, $vpos++, true);
+        $this->MaintainMedia(self::$CUR_ARCHIVE, $this->Translate('Archive of the local version'), MEDIATYPE_DOCUMENT, '.zip', false, $vpos++, true);
+        $this->MaintainMedia(self::$TOP_ARCHIVE, $this->Translate('Archive of the new version'), MEDIATYPE_DOCUMENT, '.zip', false, $vpos++, true);
 
         $package_name = $this->ReadPropertyString('package_name');
         $this->SetSummary($package_name);
@@ -380,7 +423,7 @@ class ScriptDeployment extends IPSModule
         $onClick_FileList = 'IPS_RequestAction($id, "UpdateFormField_FileList", json_encode($FileList));';
         $formActions[] = [
             'type'     => 'List',
-            'name'     => 'FileList',
+            'name'     => self::$FILE_LIST,
             'columns'  => [
                 [
                     'name'     => 'path',
@@ -542,8 +585,7 @@ class ScriptDeployment extends IPSModule
                 'value'   => self::$TOP_DIR,
             ],
         ];
-        $name = $this->Translate('CurrentArchive');
-        @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+        @$mediaID = $this->GetIDForIdent('CurrentArchive');
         if ($mediaID == false) {
             $opts[] = [
                 'caption' => 'content of current used version',
@@ -572,7 +614,7 @@ class ScriptDeployment extends IPSModule
                 'buttons' => [
                     [
                         'caption' => 'Load',
-                        'onClick' => 'IPS_RequestAction($id, "Save2Media", json_encode([ "dst" => $Load_Destination, "content" => $Load_Content ]));',
+                        'onClick' => 'IPS_RequestAction($id, "Save2Media", json_encode([ "ident" => $Load_Destination, "content" => $Load_Content ]));',
                     ],
                 ],
                 'closeCaption' => 'Cancel',
@@ -726,23 +768,22 @@ class ScriptDeployment extends IPSModule
 
         switch ($subdir) {
             case self::$TOP_DIR:
-                $name = $this->Translate(self::$TOP_ARCHIVE);
+                $ident = self::$TOP_ARCHIVE;
                 break;
             case self::$CUR_DIR:
-                $name = $this->Translate(self::$CUR_ARCHIVE);
+                $ident = self::$CUR_ARCHIVE;
                 break;
             case self::$CHG_DIR:
-                $name = $this->Translate(self::$CUR_ARCHIVE);
+                $ident = self::$CUR_ARCHIVE;
                 break;
             default:
                 $this->SendDebug(__FUNCTION__, 'unsupported subdir ' . $subdir, 0);
                 return false;
         }
 
-        @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+        @$mediaID = $this->GetIDForIdent($ident);
         if ($mediaID == false && $subdir != self::$TOP_DIR) {
-            $name = $this->Translate(self::$TOP_ARCHIVE);
-            @$mediaID = IPS_GetMediaIDByName($name, $this->InstanceID);
+            @$mediaID = $this->GetIDForIdent(self::$TOP_ARCHIVE);
         }
         if ($mediaID == false) {
             $this->SendDebug(__FUNCTION__, 'no archive found for subdir ' . $subdir, 0);
@@ -809,7 +850,7 @@ class ScriptDeployment extends IPSModule
             $this->SendDebug(__FUNCTION__, 'update from ' . $url, 0);
             $content = file_get_contents($url);
             if ($content != false) {
-                $this->SetMediaData(self::$TOP_ARCHIVE, $content, MEDIATYPE_DOCUMENT, '.zip', false);
+                $this->SetMedia(self::$TOP_ARCHIVE, $content);
             }
         }
 
@@ -921,8 +962,8 @@ class ScriptDeployment extends IPSModule
                 $values = $this->build_values_FileList();
                 $n_values = count($values) > 0 ? min(count($values), 20) : 1;
 
-                $this->UpdateFormField('FileList', 'values', json_encode($values));
-                $this->UpdateFormField('FileList', 'rowCount', $n_values);
+                $this->UpdateFormField(self::$FILE_LIST, 'values', json_encode($values));
+                $this->UpdateFormField(self::$FILE_LIST, 'rowCount', $n_values);
 
                 $files = $this->ReadFileList();
                 $counts = $this->count_state($files);
@@ -998,9 +1039,9 @@ class ScriptDeployment extends IPSModule
             case 'Save2Media':
                 $jparams = json_decode($value, true);
                 $this->SendDebug(__FUNCTION__, 'ident=' . $ident . ', params=' . print_r($jparams, true), 0);
-                $dst = $jparams['dst'];
+                $ident = $jparams['ident'];
                 $content = $jparams['content'];
-                $this->Save2Media($dst, $content);
+                $this->Save2Media($ident, $content);
                 break;
             default:
                 $r = false;
@@ -1567,12 +1608,12 @@ class ScriptDeployment extends IPSModule
         if ($this->diffFiles($chgPath, $curPath, $patchContent) == false) {
             return false;
         }
-        $this->SetMediaData(self::$DiffToCur, $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        $this->SetMedia(self::$DIFF_TO_CUR, $patchContent);
 
         if ($this->diffFiles($chgPath, $topPath, $patchContent) == false) {
             return false;
         }
-        $this->SetMediaData(self::$DiffToTop, $patchContent, MEDIATYPE_DOCUMENT, '.txt', false);
+        $this->SetMedia(self::$DIFF_TO_TOP, $patchContent);
 
         if ($this->changeDir($basePath) == false) {
             return false;
@@ -1637,8 +1678,8 @@ class ScriptDeployment extends IPSModule
             return false;
         }
 
-        $s = $this->GetMediaData(self::$TOP_ARCHIVE);
-        $this->SetMediaData(self::$CUR_ARCHIVE, $s, MEDIATYPE_DOCUMENT, '.zip', false);
+        $content = $this->GetMedia(self::$TOP_ARCHIVE);
+        $this->SetMedia(self::$CUR_ARCHIVE, $content);
         if ($this->SyncRepository(self::$CUR_DIR) == false) {
             return false;
         }
@@ -1830,7 +1871,7 @@ class ScriptDeployment extends IPSModule
 
     private function ReadFileList()
     {
-        $s = $this->GetMediaData('FileList');
+        $s = $this->GetMedia(self::$FILE_LIST);
         @$files = json_decode((string) $s, true);
         if ($files == false) {
             $files = [];
@@ -1857,8 +1898,8 @@ class ScriptDeployment extends IPSModule
     {
         usort($files, [__CLASS__, 'cmp_fileList']);
         $s = json_encode($files, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($this->GetMediaData('FileList') != $s) {
-            $this->SetMediaData('FileList', $s, MEDIATYPE_DOCUMENT, '.txt', false);
+        if ($this->GetMedia(self::$FILE_LIST) != $s) {
+            $this->SetMedia(self::$FILE_LIST, $s);
         }
 
         $this->SetReferences();
@@ -2009,25 +2050,13 @@ class ScriptDeployment extends IPSModule
         return $s;
     }
 
-    private function Save2Media($dst, $content)
+    private function Save2Media($ident, $content)
     {
-        switch ($dst) {
-            case self::$TOP_DIR:
-                $ident = self::$TOP_ARCHIVE;
-                break;
-            case self::$CUR_DIR:
-                $ident = self::$CUR_ARCHIVE;
-                break;
-            default:
-                $this->SendDebug(__FUNCTION__, 'unsupported destination ' . $dst, 0);
-                return false;
-        }
-
         if ($content == '') {
             $this->SendDebug(__FUNCTION__, 'no content -> ignore', 0);
             return true;
         }
-        $this->SetMediaData($ident, base64_decode($content), MEDIATYPE_DOCUMENT, '.zip', false);
+        $this->SetMedia($ident, base64_decode($content));
         return true;
     }
 
@@ -2038,11 +2067,11 @@ class ScriptDeployment extends IPSModule
             case 'Ubuntu':
             case 'Raspberry Pi':
             case 'Docker':
-            case 'Ubuntu (Docker)':
-            case 'Raspberry Pi (Docker)':
                 $cmd = 'diff -ru ' . $from . ' ' . $to;
                 break;
             case 'SymBox':
+            case 'Ubuntu (Docker)':
+            case 'Raspberry Pi (Docker)':
                 $cmd = 'diff -r ' . $from . ' ' . $to;
                 break;
             default:
