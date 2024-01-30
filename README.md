@@ -64,7 +64,7 @@ Liefert den aktuellen Inhalt der *__autoload.php*, eventuelle Fehler stehen in _
 
 `bool ScriptDeployment_WriteAutoload(int $InstanzID, string $content, bool $overwrite, string $err);
 Erzeugt oder überschreibt eine *__autoload.php* mit dem Inhalt _content_, eventuelle Fehler stehen in _err_.
-die Autoload braucht nach Änderungen/Anlage ein Reboot des IPS.
+die *__autoload.php* erfordert nach Änderungen/Anlage ein Reboot des IPS.
 
 ## 5. Konfiguration
 
@@ -92,24 +92,24 @@ _[3]_: es wird ggfs, die o,g, URL heruntergeladen und der Istzustand ermittelt; 
 
 #### Aktionen
 
- - **Prüfung durchführen**
+ - **Prüfung durchführen**<br>
 Paket herunterladen und Prüfung durchführen
-- **Fehlende Skripte suchen**
+- **Fehlende Skripte suchen**<br>
 Skripte der Tabelle, die noch nicht mit einem vorhandenen Skript verknüpft sind, anhand des Namens suchen - dient dazu, Systeme nachträglich einzubinden.
-- **Abgleich durchführen**
+- **Abgleich durchführen**<br>
 Anpassen der lokalen Installation an die aktuelle Version des Paketes. Lokal geänderte Script werden überschreiben, fehlende Skripte angelegt.
-<br>
-- **ZIP-Archiv laden**
+
+- **ZIP-Archiv laden**<br>
 Falls das Paket nicht mittels _wget_ geholt werden kann, kann es mit dieser Funktion händisch geladen werden. Aufbau des ZIP-Archivs wie oben beschrieben.
 
 _nur bei makiertem Eintrag:_
-- **Skript öffnen**
+- **Skript öffnen**<br>
 das Skript des markierten Eintrags öffnen
-- **Eintrag anzeigen**
+- **Eintrag anzeigen**<br>
 markierten Eintrag anzeigen
-- **Skript verknüpfen**
+- **Skript verknüpfen**<br>
 den markierten Eintrag mit einem vorhandenen Skript verknüpfen
-- **Eintrag löschen**
+- **Eintrag löschen**<br>
 Fehlerhaften Eintrag in der Liste der Dateien händisch löschen
 
 Die Identifikation der Skripte erfolgt über den Skript-Dateinamen (in dem Archiv) sowie der Verknüpfung mit dem IPS-Skriptobjekt - festgehalten werden die in einem Medienobjekt _Liste der Skripte_.
