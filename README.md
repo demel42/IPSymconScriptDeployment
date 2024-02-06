@@ -72,23 +72,26 @@ die *__autoload.php* erfordert nach Änderungen/Anlage ein Reboot des IPS.
 
 #### Properties
 
-| Eigenschaft               | Typ      | Standardwert | Beschreibung |
-| :------------------------ | :------  | :----------- | :----------- |
-| Instanz deaktivieren      | boolean  | false        | Instanz temporär deaktivieren |
-|                           |          |              | |
-| Paketname                 | string   |              | aussagekräftige Bezeichung des Paketes |
-| URL zum Herunterladen     | string   |              | optionale Angabe einer Web-Adresse, unter der das Paket per _wget_ heruntergeladen werden kann _[1]_ |
-|                           |          |              | |
-| Lokale Pfad               | string   |              | lokaler Pfad, an dem die Archive ausgepackt werden können etc _[2]_ |
-|                           |          |              | |
-| Uhrzeit                   |          |              | Uhrzeit zur zyklischen Prüfung _[3]_ |
-|                           |          |              | |
+| Eigenschaft               | Typ      | Standardwert   | Beschreibung |
+| :------------------------ | :------  | :------------- | :----------- |
+| Instanz deaktivieren      | boolean  | false          | Instanz temporär deaktivieren |
+|                           |          |                | |
+| Paketname                 | string   |                | aussagekräftige Bezeichung des Paketes |
+| URL zum Herunterladen     | string   |                | optionale Angabe einer Web-Adresse, unter der das Paket per _wget_ heruntergeladen werden kann _[1]_ |
+|                           |          |                | |
+| Lokale Pfad               | string   |                | lokaler Pfad, an dem die Archive ausgepackt werden können etc _[2]_ |
+|                           |          |                | |
+| Uhrzeit                   |          |                | Uhrzeit zur zyklischen Prüfung _[3]_ |
+|                           |          |                | |
+| Mapping-Funktion          |          | GetLocalConfig | Angabe der Funktion zum Mapping von Schlüsselwerten _[4]_ |
 
 _[1]_: wenn es sich um ein Git-Repository handelt, wäre die Adresse wie folgt: *https://*_github._*com/\<git-user>/\<repository>/archive/\<branch>.zip*
 
 _[2]_: der Inhalt dieser Pfade ist nur temporär relevant und muss nicht erhalten bleiben, wird im zweifelsfall wieder hergestellt
 
 _[3]_: es wird ggfs, die o,g, URL heruntergeladen und der Istzustand ermittelt; dieser wird in der Statusvariable _Zustand_ abgelegt (_synchronisiert_, _lokal geändert_, _aktualisierbar_, _unklar_, _fehlerhaft_).
+
+_[4]_: die angegebene Funktion bekommt ein _Ident_ übergeben und liefert einen Schlüsselwert zurück (siehe auch [Basisfunktionen](docs/basefunctions.php)).
 
 #### Aktionen
 
