@@ -1003,9 +1003,10 @@ class ScriptDeployment extends IPSModule
                     ];
                     $title = '';
                     if ($state['info'] != '') {
+                        $v = is_array($state['info']) ? implode(', ', $state['info']) : $state['info'];
                         $values[] = [
                             'title' => '',
-                            'value' => '(' . implode(', ', $state['info']) . ')',
+                            'value' => '(' . $v . ')',
                         ];
                     }
                 }
