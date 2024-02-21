@@ -143,6 +143,10 @@ ScriptDeployment.State
 
 ## 7. Versions-Historie
 
+- 1.2 @ 21.02.2024 11:12
+  - Fix: Absicherung gegen fehlenden Medienobjekte/Medienobjekt-Dateien
+  - update submodule CommonStubs
+
 - 1.1 @ 07.02.2024 14:35 
   - Fix: Fehler im Info-Fenster des Eintrags
 

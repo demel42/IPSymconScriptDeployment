@@ -760,6 +760,13 @@ class ScriptDeployment extends IPSModule
         }
 
         @$mediaID = $this->GetIDForIdent($ident);
+        if ($mediaID != false) {
+            $media = IPS_GetMedia($mediaID);
+            $zipPath = IPS_GetKernelDir() . $media['MediaFile'];
+            if (file_exists($zipPath) == false) {
+                @$mediaID = false;
+            }
+        }
         if ($mediaID == false && $subdir != self::$TOP_DIR) {
             @$mediaID = $this->GetIDForIdent(self::$TOP_ARCHIVE);
         }
@@ -834,8 +841,10 @@ class ScriptDeployment extends IPSModule
 
         $path = $this->ReadPropertyString('path');
         $basePath = $this->getBasePath();
+        $topPath = $this->getSubPath(self::$TOP_DIR);
+        $curPath = $this->getSubPath(self::$CUR_DIR);
 
-        $dirs = [$path, $basePath];
+        $dirs = [$path, $basePath, $topPath, $curPath];
         foreach ($dirs as $dir) {
             if ($this->checkDir($dir, true) == false) {
                 $this->SetValue('State', self::$STATE_FAULTY);
@@ -843,9 +852,6 @@ class ScriptDeployment extends IPSModule
                 return false;
             }
         }
-
-        $topPath = $this->getSubPath(self::$TOP_DIR);
-        $curPath = $this->getSubPath(self::$CUR_DIR);
 
         if ($this->SyncRepository(self::$TOP_DIR) == false) {
             $this->SetValue('State', self::$STATE_FAULTY);
