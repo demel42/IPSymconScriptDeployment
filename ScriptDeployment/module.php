@@ -763,7 +763,7 @@ class ScriptDeployment extends IPSModule
         if ($mediaID != false) {
             $media = IPS_GetMedia($mediaID);
             $zipPath = IPS_GetKernelDir() . $media['MediaFile'];
-            if (file_exists($zipPath) == false) {
+            if (file_exists($zipPath) == false || filesize($zipPath) == 0) {
                 @$mediaID = false;
             }
         }
