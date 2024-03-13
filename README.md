@@ -143,6 +143,9 @@ ScriptDeployment.State
 
 ## 7. Versions-Historie
 
+- 1.3 @ 13.03.2024 10:48
+  - Fix: Prüfung von "REQUIRES" wurde unter Umständen nicht korrekt durchgeführt
+
 - 1.2 @ 21.02.2024 11:12
   - Fix: Absicherung gegen fehlenden Medienobjekte/Medienobjekt-Dateien
   - update submodule CommonStubs

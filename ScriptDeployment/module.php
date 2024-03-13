@@ -1415,7 +1415,14 @@ class ScriptDeployment extends IPSModule
                 }
             }
 
-            $newFile['requires'] = isset($curFile['requires']) ? $curFile['requires'] : [];
+            $newFile['requires'] = [];
+            foreach ($topFiles as $topFile) {
+                if ($topFile['filename'] == $curFile['filename']) {
+                    $newFile['requires'] = isset($topFile['requires']) ? $topFile['requires'] : [];
+                    break;
+                }
+            }
+
             $newFiles[] = $newFile;
 
             $msgFileV[$newFile['filename']] = ['file' => $newFile, 'msgV' => $msgV];
