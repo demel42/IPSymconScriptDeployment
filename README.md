@@ -143,9 +143,10 @@ ScriptDeployment.State
 
 ## 7. Versions-Historie
 
-- 1.3 @ 13.03.2024 11:02
+- 1.3 @ 13.03.2024 11:15
   - Fix: Prüfung von "REQUIRES" wurde unter Umständen nicht korrekt durchgeführt
   - Fix: mögliches Problem bei der initialen Einrichtung behoben
+  - Fix: Erkennung von neu im Repository hinzugefügte Dateien korrigiert
 
 - 1.2 @ 21.02.2024 11:12
   - Fix: Absicherung gegen fehlenden Medienobjekte/Medienobjekt-Dateien

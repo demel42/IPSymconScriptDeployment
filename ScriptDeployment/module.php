@@ -1436,8 +1436,8 @@ class ScriptDeployment extends IPSModule
             }
 
             $fnd = false;
-            foreach ($curFiles as $curFile) {
-                if ($curFile['filename'] == $oldFile['filename']) {
+            foreach ($topFiles as $topFile) {
+                if ($topFile['filename'] == $oldFile['filename']) {
                     $fnd = true;
                     break;
                 }
