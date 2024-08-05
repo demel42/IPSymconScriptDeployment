@@ -2096,21 +2096,23 @@ class ScriptDeployment extends IPSModule
                 break;
         }
 
+        $_to = substr($to, strlen($this->getBasePath()) + 1);
+
         $time_start = microtime(true);
         $data = exec($cmd, $out, $exitcode);
         $duration = round(microtime(true) - $time_start, 2);
 
         if ($exitcode == 0) {
-            $this->SendDebug(__FUNCTION__, ' ... equal', 0);
+            $this->SendDebug(__FUNCTION__, $_to . ': equal', 0);
             $diff = '';
             return true;
         }
         if ($exitcode == 1) {
-            $this->SendDebug(__FUNCTION__, ' ... differ', 0);
+            $this->SendDebug(__FUNCTION__, $_to . ': differ', 0);
             $diff = implode(PHP_EOL, $out);
             return true;
         }
-        $this->SendDebug(__FUNCTION__, ' ... exitcode=' . $exitcode, 0);
+        $this->SendDebug(__FUNCTION__, 'from=' . $from . ', to=' . $to . ': faild with exitcode=' . $exitcode, 0);
         return false;
     }
 }
