@@ -143,6 +143,10 @@ ScriptDeployment.State
 
 ## 7. Versions-Historie
 
+- 1.4 @ 05.08.2024 12:05
+  - Verbesserung: weitere Absicherung der ZIP-Operationen
+  - update submodule CommonStubs
+
 - 1.3 @ 15.04.2024 11:51
   - Fix: Prüfung von "REQUIRES" wurde unter Umständen nicht korrekt durchgeführt
   - Fix: mögliches Problem bei der initialen Einrichtung behoben

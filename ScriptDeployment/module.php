@@ -32,7 +32,7 @@ class ScriptDeployment extends IPSModule
     {
         parent::__construct($InstanceID);
 
-        $this->CommonContruct(__DIR__);
+        $this->CommonConstruct(__DIR__);
         $this->SemaphoreID = __CLASS__ . '_' . $InstanceID;
     }
 
@@ -782,12 +782,33 @@ class ScriptDeployment extends IPSModule
         }
 
         $zip = new ZipArchive();
-        if ($zip->open($zipPath) == false) {
-            $this->SendDebug(__FUNCTION__, 'unable to open zip archive "' . $zipPath . '"', 0);
+        $ret = @$zip->open($zipPath);
+        if ($ret !== true) {
+            if ($ret !== false) {
+                $zip_errors = [
+                    ZipArchive::ER_EXISTS => 'file already exists',
+                    ZipArchive::ER_INCONS => 'archive ist inconsistent',
+                    ZipArchive::ER_INVAL  => 'invalid archive',
+                    ZipArchive::ER_MEMORY => 'memory error',
+                    ZipArchive::ER_NOENT  => 'no such file',
+                    ZipArchive::ER_NOZIP  => 'is no archive',
+                    ZipArchive::ER_OPEN   => 'unable to open',
+                    ZipArchive::ER_READ   => 'read error',
+                    ZipArchive::ER_SEEK   => 'positioning error',
+                ];
+                $err = ' , error=' . (isset($zip_errors[$ret]) ? $zip_errors[$ret] : '#' . $ret);
+            } else {
+                $err = '';
+            }
+            $this->SendDebug(__FUNCTION__, 'unable to open zip archive "' . $zipPath . '"' . $err, 0);
             return false;
         }
 
-        $filename = $zip->getNameIndex(0);
+        $filename = @$zip->getNameIndex(0);
+        if ($filename === false) {
+            $this->SendDebug(__FUNCTION__, 'unable to get first filename from zip archive "' . $zipPath . '"', 0);
+            return false;
+        }
         $targetPath = $basePath . DIRECTORY_SEPARATOR . basename($filename);
 
         if (file_exists($targetPath)) {
@@ -807,7 +828,11 @@ class ScriptDeployment extends IPSModule
         }
 
         $this->SendDebug(__FUNCTION__, 'extract ' . $zipPath . ' (' . $subdir . ')', 0);
-        $zip->extractTo($basePath);
+        $r = @$zip->extractTo($basePath);
+        if ($r === false) {
+            $this->SendDebug(__FUNCTION__, 'unable to extract zip archive "' . $zipPath . '"', 0);
+            return false;
+        }
         $zip->close();
 
         if (rename($targetPath, $path) == false) {
