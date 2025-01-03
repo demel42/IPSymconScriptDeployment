@@ -143,6 +143,9 @@ ScriptDeployment.State
 
 ## 7. Versions-Historie
 
+- 1.5 @ 03.01.2025 14:17
+ - update submodule CommonStubs
+
 - 1.4 @ 05.08.2024 12:05
   - Verbesserung: weitere Absicherung der ZIP-Operationen
   - update submodule CommonStubs
